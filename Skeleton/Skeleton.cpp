@@ -136,7 +136,7 @@ public:
 
 	float getForceMagnitudeConnected(Node& other) {
 		float distance = getDistance(other);
-		if (distance <= preferredDistance) return - forceMultiplier * (distance - preferredDistance) * (distance - preferredDistance);
+		if (distance <= preferredDistance) return -forceMultiplier * (distance - preferredDistance) * (distance - preferredDistance);
 		else return forceMultiplier * (exp(distance - preferredDistance) - 1);
 	}
 
@@ -268,11 +268,11 @@ public:
 
 	// source: https://stackoverflow.com/questions/9345087/choose-m-elements-randomly-from-a-vector-containing-n-elements
 	// Fisher-Yates shuffle
-	template<class BidiIter >
-	BidiIter shuffleEdges(BidiIter begin, BidiIter end, size_t num_random) {
+	template<class T >
+	T shuffleEdges(T begin, T end, size_t num_random) {
 		size_t left = std::distance(begin, end);
 		while (num_random--) {
-			BidiIter r = begin;
+			T r = begin;
 			std::advance(r, rand() % left);
 			std::swap(*begin, *r);
 			++begin;
