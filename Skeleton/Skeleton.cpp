@@ -1,5 +1,5 @@
-//=============================================================================================
-// Mintaprogram: Z�ld h�romsz�g. Ervenyes 2019. osztol.
+﻿//=============================================================================================
+// Mintaprogram: Zöld háromszög. Ervenyes 2019. osztol.
 //
 // A beadott program csak ebben a fajlban lehet, a fajl 1 byte-os ASCII karaktereket tartalmazhat, BOM kihuzando.
 // Tilos:
@@ -65,7 +65,7 @@ unsigned int vao;	   // virtual world on the GPU
 
 float preferredDistance = 0.25;
 float forceMultiplier = 5;
-float friction = 0.5;
+float friction = 5;
 
 //Hyperbolic coordinates to normalized ones
 // x/z, y/z
@@ -76,7 +76,7 @@ vec2 scaleToNormalized(vec3 hyperbolic) {
 //Normalized coordinates to hyperbolic ones
 // 1 / (1-z^2)
 vec3 backToHyperbolic(vec3 normalized) {
-	return vec3(normalized.x, normalized.y, 1.0f) / sqrt(1.0f - pow(normalized.x, 2) - pow(normalized.y, 2));
+	return vec3(normalized.x, normalized.y, 1.0f) / sqrt(1.0f - (normalized.x) * (normalized.x) - (normalized.y) * (normalized.y));
 }
 
 const int numberOfNodes = 50;
@@ -98,8 +98,8 @@ public:
 		acceleration = vec3(0, 0, 0);
 	}
 
-	Node(vec3 v) {
-		position = v;
+	Node(vec3 pos) {
+		position = pos;
 	}
 
 	void randomizePosition() {
@@ -207,11 +207,6 @@ public:
 		return isVisible;
 	}
 
-	void setNode(Node node1, Node node2) {
-		n1 = &node1;
-		n2 = &node2;
-	}
-
 	void draw() {
 		if (isVisible) {
 			glGenVertexArrays(1, &vao);
@@ -264,6 +259,10 @@ public:
 
 	std::vector<Node> getNodes() {
 		return nodes;
+	}
+
+	std::vector<Edge> getEdges() {
+		return edges;
 	}
 
 	// source: https://stackoverflow.com/questions/9345087/choose-m-elements-randomly-from-a-vector-containing-n-elements
@@ -329,20 +328,22 @@ public:
 
 	vec3 calculateForceFrom(Node& current, Node& other) {
 		vec3 diff = other.getPosition() - current.getPosition();
-		if (this->isConnected(&current, &other))
+		std::cout << current.getDistance(other) << std::endl;
+		if (this->isConnected(&current, &other)) // TODO: isConnected nem jól működik
 			return normalize(diff) * current.getForceMagnitudeConnected(other);
 		return normalize(diff) * current.getForceMagnitudeDisconnected(other);
 	}
 
 	vec3 summariseForces(int nodeIndex) { //TODO
 		vec3 sum = vec3(0, 0, 0);
-		Node currentNode = nodes[nodeIndex];
+		Node& currentNode = nodes[nodeIndex];
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			if (nodeIndex == i)
 				continue;
 			sum = sum + calculateForceFrom(currentNode, nodes[i]);
 		}
+
 		return sum;
 	}
 
@@ -369,11 +370,12 @@ void onInitialization() {
 	Edge e1 = Edge(&n1, &n2, true);
 	Edge e2 = Edge(&n1, &n3, true);
 	Edge e3 = Edge(&n3, &n2, true);
-
 	graph.addNode(n1);
 	graph.addNode(n2);
 	graph.addNode(n3);
-	graph.addEdge(e1);*/
+	graph.addEdge(e1);
+
+	std::cout<<graph.isConnected(&n1, &n2)<<std::endl;*/
 
 	for (int i = 0; i < numberOfNodes; i++) {
 		graph.addNode(Node());
@@ -433,7 +435,7 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
-	float deltaTime = 0.001;
-	graph.modifyGraph(deltaTime);
+
+	graph.modifyGraph(0.05);
 	glutPostRedisplay();
 }
