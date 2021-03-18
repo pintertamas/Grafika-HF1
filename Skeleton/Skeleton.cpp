@@ -263,7 +263,7 @@ public:
 	}
 
 	std::vector<Node> getNodes() {
-		return nodes; 
+		return nodes;
 	}
 
 	// source: https://stackoverflow.com/questions/9345087/choose-m-elements-randomly-from-a-vector-containing-n-elements
