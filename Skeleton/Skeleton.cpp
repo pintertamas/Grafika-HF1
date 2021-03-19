@@ -63,14 +63,25 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
 float preferredDistance = 0.25f;
-float forceMultiplier = 0.5;
-float friction = 0.5; // 0-1
-float centerizingForce = 0.9; // this determines the strength of the force that pulls the nodes towards the center of the screen
+float forceMultiplier = 0.1;
+float friction = 0.999999; // 0-1
+float connectedForceLimit = 0.02; // 0.01-0.05; 0 is possible but wont limit the force, so the numbers will converge to inf
+float disConnectedForceLimit = 0.001; // 0.001 - inf; this won't let the forceMagnitude of the not connected edges be inf
+//float centerizingForce = 0.9; // this determines the strength of the force that pulls the nodes towards the center of the screen
 bool spaceKeyDown = false;
 long spaceKeyTime = 0;
 
 const int numberOfNodes = 50;
 const int visibleEdgesInPercent = 5;
+
+// for debugging purposes
+void printVec3(std::string message, vec3 v) {
+	printf("%s %9.6f, %9.6f, %9.6f\n", message.c_str(), v.x, v.y, v.z);
+}
+
+float sigmoid(float x) {
+	return 1 / (1 + exp(x));
+}
 
 class Node {
 	vec3 position;
@@ -122,7 +133,9 @@ public:
 	}
 
 	void changePosition(vec3 vector) {
+		printVec3("pos elotte: ", this->getPosition());
 		this->position = this->position + vector;
+		printVec3("pos utana: ", this->getPosition());
 	}
 
 	void move(float deltaTime) {
@@ -155,14 +168,15 @@ public:
 
 	float getForceMagnitudeConnected(Node& other) {
 		float distance = getNormalizedDistance(other);
-		if (distance <= preferredDistance) {
-			float magnitude = -(distance - preferredDistance) * (distance - preferredDistance) * forceMultiplier;
+		if (distance > preferredDistance) {
+			float magnitude = (sigmoid(distance - preferredDistance) - 0.5) * forceMultiplier;
+			//float magnitude = (distance - preferredDistance) * (distance - preferredDistance) * forceMultiplier;
 			//printf("distance: %9.6f, magnitude: %9.6f\n", distance, magnitude);
 			return magnitude;
 		}
 
 		else {
-			float magnitude = forceMultiplier * (exp(distance - preferredDistance) - 1);
+			float magnitude = 0.01 * ((-1 / (distance + connectedForceLimit)) + (1 / preferredDistance)) * forceMultiplier;
 			//printf("distance: %9.6f, magnitude: %9.6f\n", distance, magnitude);
 			return magnitude;
 		}
@@ -170,7 +184,7 @@ public:
 
 	float getForceMagnitudeDisconnected(Node& other) {
 		float distance = getNormalizedDistance(other);
-		return -forceMultiplier * log(distance) - 1.5;
+		return (-1 / (distance + disConnectedForceLimit)) * forceMultiplier;
 	}
 
 	void draw() {
@@ -186,7 +200,7 @@ public:
 
 		/*int sides = 12;
 		float radius = 0.05f;
-		
+
 		for (int i = 0; i < sides; i++) {
 			float hyperX = ((cosf(360 / sides * i * M_PI / 180) * radius) + getPosition().x - 1);
 			float hyperY = ((sinf(360 / sides * i * M_PI / 180) * radius) + getPosition().y - 1);
@@ -307,7 +321,7 @@ public:
 		for each (Node node in nodes) {
 			hub = hub + node.getPosition();
 		}
-		hub = hub / nodes.size();
+		return hub / nodes.size();
 	}
 
 	void resetNodePosition() {
@@ -347,8 +361,9 @@ public:
 	}
 
 	void moveTowardsCenter() {
-		for each (Node node in nodes) {
-			node.changePosition(calculateHub());
+		vec3 hub = -calculateHub();
+		for (int i = 0; i < nodes.size(); i++) {
+			nodes[i].changePosition(hub);
 		}
 	}
 
@@ -395,7 +410,9 @@ public:
 			nodes[i].applyForce(force, deltaTime);
 			nodes[i].move(deltaTime);
 		}
-
+		//printVec3("hub elotte: ", calculateHub());
+		moveTowardsCenter();
+		//printVec3("hub utana: ", calculateHub());
 	}
 };
 
@@ -415,7 +432,7 @@ void onInitialization() {
 	graph.addNode(n2);
 	graph.addNode(n3);
 	graph.addEdge(e1);
-	
+
 
 	/*for (int i = 0; i < numberOfNodes; i++) {
 		graph.addNode(Node());
@@ -442,7 +459,7 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 	if (key == ' ') {
 		if (spaceKeyDown) {
 			spaceKeyDown = false;
-			graph.resetNodePosition();
+			//graph.resetNodePosition();
 		}
 		else {
 			spaceKeyTime = glutGet(GLUT_ELAPSED_TIME);
@@ -488,9 +505,9 @@ void onIdle() {
 
 	//if (spaceKeyDown)
 	//{
-		float deltaTime = abs(spaceKeyTime - time);
-		//printf("%9.6f\n", deltaTime);
-		graph.modifyGraph(deltaTime);
+	float deltaTime = abs(spaceKeyTime - time);
+	//printf("%9.6f\n", deltaTime);
+	graph.modifyGraph(deltaTime);
 	//}
 	glutPostRedisplay();
 }
