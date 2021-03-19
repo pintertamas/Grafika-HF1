@@ -63,9 +63,9 @@ const char* const fragmentSource = R"(
 GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
-float preferredDistance = 0.25;
-float forceMultiplier = 5;
-float friction = 5;
+float preferredDistance = 0.0000025;
+float forceMultiplier = 1;
+float friction = 0.05;
 
 //Hyperbolic coordinates to normalized ones
 // x/z, y/z
@@ -253,7 +253,7 @@ public:
 		edges.push_back(e);
 	}
 
-	size_t requiredEdgeCount() {
+	int requiredEdgeCount() {
 		return (numberOfNodes * (numberOfNodes - 1) / 2) * visibleEdgesInPercent / 100;
 	}
 
@@ -265,19 +265,17 @@ public:
 		return edges;
 	}
 
-	// source: https://stackoverflow.com/questions/9345087/choose-m-elements-randomly-from-a-vector-containing-n-elements
-	// Fisher-Yates shuffle
-	template<class T >
-	T shuffleEdges(T begin, T end, size_t num_random) {
-		size_t left = std::distance(begin, end);
-		while (num_random--) {
-			T r = begin;
-			std::advance(r, rand() % left);
-			std::swap(*begin, *r);
-			++begin;
-			--left;
+	void chooseVisibleEdges() {
+		int requiredNumberOfVisibleEdges = requiredEdgeCount();
+		int visibleEdgesCount = 0;
+		while (visibleEdgesCount <= requiredNumberOfVisibleEdges) {
+			int randomIndex = rand() % edges.size();
+			//std::cout << randomIndex << std::endl;
+			if (edges[randomIndex].getVisible())
+				continue;
+			edges[randomIndex].setVisible();
+			visibleEdgesCount++;
 		}
-		return begin;
 	}
 
 	void createGraph() {
@@ -293,15 +291,9 @@ public:
 			}
 		}
 
-		shuffleEdges(edges.begin(), edges.end(), requiredEdgeCount());
+		chooseVisibleEdges();
 
-		visibleEdges = 0;
-		while (visibleEdges <= requiredEdgeCount()) {
-			edges[visibleEdges].setVisible();
-			visibleEdges++;
-		}
-
-		printf("%d", visibleEdges); // to check the number of visible/real edges
+		printf("visibleEdges: %d", visibleEdges); // to check the number of visible/real edges
 	}
 
 	void draw() {
@@ -319,17 +311,15 @@ public:
 		for (int i = 0; i < edges.size(); i++)
 		{
 			if (edges[i].getN1() == n1 && edges[i].getN2() == n2 && edges[i].getVisible())
-			{
 				return true;
-			}
 		}
 		return false;
 	}
 
 	vec3 calculateForceFrom(Node& current, Node& other) {
 		vec3 diff = other.getPosition() - current.getPosition();
-		std::cout << current.getDistance(other) << std::endl;
-		if (this->isConnected(&current, &other)) // TODO: isConnected nem jól működik
+		//std::cout << current.getDistance(other) << std::endl;
+		if (this->isConnected(&current, &other))
 			return normalize(diff) * current.getForceMagnitudeConnected(other);
 		return normalize(diff) * current.getForceMagnitudeDisconnected(other);
 	}
@@ -436,6 +426,6 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 
-	graph.modifyGraph(0.05);
+	graph.modifyGraph(0.005);
 	glutPostRedisplay();
 }
