@@ -63,8 +63,9 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
 float preferredDistance = 0.25f;
-float forceMultiplier = 2;
+float forceMultiplier = 0.5;
 float friction = 0.5; // 0-1
+float centerizingForce = 0.9; // this determines the strength of the force that pulls the nodes towards the center of the screen
 bool spaceKeyDown = false;
 long spaceKeyTime = 0;
 
@@ -120,13 +121,17 @@ public:
 		return position;
 	}
 
+	void changePosition(vec3 vector) {
+		this->position = this->position + vector;
+	}
+
 	void move(float deltaTime) {
 		this->position = this->position + speed * deltaTime;
 	}
 
 	void applyForce(vec3 force, float deltaTime) { // kb 0.000040 nagyságrenű számok
 		this->speed = this->speed + force / mass * deltaTime - friction * this->speed;
-		printf("%9.6f, %9.6f, %9.6f\n", this->speed.x, this->speed.y, this->speed.z);
+		//printf("%9.6f, %9.6f, %9.6f\n", this->speed.x, this->speed.y, this->speed.z);
 	}
 
 	float lorentzForce(vec3 p1, vec3 p2) {
@@ -151,7 +156,7 @@ public:
 	float getForceMagnitudeConnected(Node& other) {
 		float distance = getNormalizedDistance(other);
 		if (distance <= preferredDistance) {
-			float magnitude = -forceMultiplier * (distance - preferredDistance) * (distance - preferredDistance);
+			float magnitude = -(distance - preferredDistance) * (distance - preferredDistance) * forceMultiplier;
 			//printf("distance: %9.6f, magnitude: %9.6f\n", distance, magnitude);
 			return magnitude;
 		}
@@ -297,6 +302,14 @@ public:
 		return edges;
 	}
 
+	vec3 calculateHub() {
+		vec3 hub = vec3(0, 0, 0);
+		for each (Node node in nodes) {
+			hub = hub + node.getPosition();
+		}
+		hub = hub / nodes.size();
+	}
+
 	void resetNodePosition() {
 		for each (Node node in nodes) {
 			node.randomizePosition();
@@ -331,6 +344,12 @@ public:
 		chooseVisibleEdges();
 
 		printf("visibleEdges: %d", visibleEdges); // to check the number of visible/real edges
+	}
+
+	void moveTowardsCenter() {
+		for each (Node node in nodes) {
+			node.changePosition(calculateHub());
+		}
 	}
 
 	void draw() {
@@ -376,6 +395,7 @@ public:
 			nodes[i].applyForce(force, deltaTime);
 			nodes[i].move(deltaTime);
 		}
+
 	}
 };
 
@@ -469,7 +489,7 @@ void onIdle() {
 	//if (spaceKeyDown)
 	//{
 		float deltaTime = abs(spaceKeyTime - time);
-		printf("%9.6f\n", deltaTime);
+		//printf("%9.6f\n", deltaTime);
 		graph.modifyGraph(deltaTime);
 	//}
 	glutPostRedisplay();
