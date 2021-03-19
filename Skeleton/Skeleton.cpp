@@ -63,7 +63,7 @@ const char* const fragmentSource = R"(
 GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
-float preferredDistance = 0.0000025;
+float preferredDistance = 0.15;
 float forceMultiplier = 1;
 float friction = 0.05;
 
@@ -142,7 +142,7 @@ public:
 
 	float getForceMagnitudeDisconnected(Node& other) {
 		float distance = getDistance(other);
-		return -forceMultiplier * log(distance) - 1.5;
+		return forceMultiplier * log(distance) - 1.5;
 	}
 
 	void draw() {
@@ -174,7 +174,6 @@ public:
 		glBindVertexArray(vao);
 		glDrawArrays(GL_POINTS, 0, 1);
 	}
-
 };
 
 class Edge {
@@ -270,7 +269,6 @@ public:
 		int visibleEdgesCount = 0;
 		while (visibleEdgesCount <= requiredNumberOfVisibleEdges) {
 			int randomIndex = rand() % edges.size();
-			//std::cout << randomIndex << std::endl;
 			if (edges[randomIndex].getVisible())
 				continue;
 			edges[randomIndex].setVisible();
