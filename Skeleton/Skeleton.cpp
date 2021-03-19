@@ -32,7 +32,6 @@
 // negativ elojellel szamoljak el es ezzel parhuzamosan eljaras is indul velem szemben.
 //=============================================================================================
 #include "framework.h"
-#include "iostream"
 
 // vertex shader in GLSL: It is a Raw string (C++11) since it contains new line characters
 const char* const vertexSource = R"(
@@ -63,21 +62,11 @@ const char* const fragmentSource = R"(
 GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
-float preferredDistance = 0.15;
-float forceMultiplier = 1;
-float friction = 0.05;
-
-//Hyperbolic coordinates to normalized ones
-// x/z, y/z
-vec2 scaleToNormalized(vec3 hyperbolic) {
-	return vec2(hyperbolic.x / hyperbolic.z, hyperbolic.y / hyperbolic.z);
-}
-
-//Normalized coordinates to hyperbolic ones
-// 1 / (1-z^2)
-vec3 backToHyperbolic(vec3 normalized) {
-	return vec3(normalized.x, normalized.y, 1.0f) / sqrt(1.0f - (normalized.x) * (normalized.x) - (normalized.y) * (normalized.y));
-}
+float preferredDistance = 0.25f;
+float forceMultiplier = 0.001;
+float friction = 0.5;
+bool spaceKeyDown = false;
+long spaceKeyTime = 0;
 
 const int numberOfNodes = 50;
 const int visibleEdgesInPercent = 5;
@@ -102,13 +91,29 @@ public:
 		position = pos;
 	}
 
+	//Hyperbolic coordinates to normalized ones
+	// x/z, y/z
+	vec2 scaleToNormalized(vec3 hyperbolic) {
+		return vec2(hyperbolic.x / hyperbolic.z, hyperbolic.y / hyperbolic.z);
+	}
+
+	//Normalized coordinates to hyperbolic ones
+	// 1 / (1-z^2)
+	vec3 normalizedToHyperbolic(vec3 normalized) {
+		return vec3(normalized.x, normalized.y, 1.0f) / sqrt(1.0f - (normalized.x) * (normalized.x) - (normalized.y) * (normalized.y));
+	}
+
 	void randomizePosition() {
 		// *2.0f is for the correct window size, the -1.0f is for the correct placement.
 		//(without them the graph would be in the top-right corner)
-		float x = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
-		float y = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
+		float x = -1;
+		float y = -1;
+		while (x * x + y * y >= 1) {
+			x = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
+			y = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
+		}
 		float z = 1;
-		this->position = vec3(x, y, z);
+		this->position = scaleToNormalized(vec3(x, y, z));
 	}
 
 	vec3 getPosition() {
@@ -119,8 +124,9 @@ public:
 		this->position = this->position + speed * deltaTime;
 	}
 
-	void applyForce(vec3 force, float deltaTime) { // TODO
+	void applyForce(vec3 force, float deltaTime) { // kb 0.000040 nagyságrenű számok
 		this->speed = this->speed + force / mass * deltaTime - friction * this->speed;
+		//printf("%9.6f, %9.6f, %9.6f\n", this->speed.x, this->speed.y, this->speed.z);
 	}
 
 	float getDistanceSqr(Node& other) {
@@ -136,13 +142,22 @@ public:
 
 	float getForceMagnitudeConnected(Node& other) {
 		float distance = getDistance(other);
-		if (distance <= preferredDistance) return -forceMultiplier * (distance - preferredDistance) * (distance - preferredDistance);
-		else return forceMultiplier * (exp(distance - preferredDistance) - 1);
+		if (distance <= preferredDistance) {
+			float magnitude = -forceMultiplier * (distance - preferredDistance) * (distance - preferredDistance);
+			//printf("distance: %9.6f, magnitude: %9.6f\n", distance, magnitude);
+			return magnitude;
+		}
+
+		else {
+			float magnitude = forceMultiplier * (exp(distance - preferredDistance) - 1);
+			//printf("distance: %9.6f, magnitude: %9.6f\n", distance, magnitude);
+			return magnitude;
+		}
 	}
 
 	float getForceMagnitudeDisconnected(Node& other) {
 		float distance = getDistance(other);
-		return forceMultiplier * log(distance) - 1.5;
+		return -forceMultiplier * log(distance) - 1.5;
 	}
 
 	void draw() {
@@ -161,7 +176,7 @@ public:
 		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
 
 		int location = glGetUniformLocation(gpuProgram.getId(), "color");
-		glUniform3f(location, 1, 0, 0);
+		glUniform3f(location, 1, 0, 1);
 		float MVPtransf[4][4] = { 1, 0, 0, 0,
 								  0, 1, 0, 0,
 								  0, 0, 1, 0,
@@ -177,16 +192,16 @@ public:
 };
 
 class Edge {
-	Node* n1;
-	Node* n2;
+	int node1;
+	int node2;
 	bool isVisible = false;
 	vec3 color = vec3(0, 1, 0);
 	unsigned int edgeVBO; //vbo for the edges
 
 public:
-	Edge(Node* node1, Node* node2, bool shouldDraw) {
-		n1 = node1;
-		n2 = node2;
+	Edge(int nodeIndex1, int nodeIndex2, bool shouldDraw) {
+		node1 = nodeIndex1;
+		node2 = nodeIndex2;
 		isVisible = shouldDraw;
 	}
 
@@ -194,19 +209,19 @@ public:
 		isVisible = true;
 	}
 
-	Node* getN1() {
-		return n1;
+	int getNode1() {
+		return node1;
 	}
 
-	Node* getN2() {
-		return n2;
+	int getNode2() {
+		return node2;
 	}
 
 	boolean getVisible() {
 		return isVisible;
 	}
 
-	void draw() {
+	void draw(std::vector<Node>& nodeList) {
 		if (isVisible) {
 			glGenVertexArrays(1, &vao);
 			glBindVertexArray(vao);
@@ -216,15 +231,15 @@ public:
 
 			std::vector<vec2> vertices;
 
-			vertices.push_back(vec2(n1->getPosition().x, n1->getPosition().y));
-			vertices.push_back(vec2(n2->getPosition().x, n2->getPosition().y));
+			vertices.push_back(vec2(nodeList[node1].getPosition().x, nodeList[node1].getPosition().y));
+			vertices.push_back(vec2(nodeList[node2].getPosition().x, nodeList[node2].getPosition().y));
 
 			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
 			glEnableVertexAttribArray(0);
 			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
 
 			int location = glGetUniformLocation(gpuProgram.getId(), "color");
-			glUniform3f(location, color.x, color.y, color.z);
+			glUniform3f(location, 1, 1, 0);
 			float MVPtransf[4][4] = { 1, 0, 0, 0,
 									  0, 1, 0, 0,
 									  0, 0, 1, 0,
@@ -264,6 +279,12 @@ public:
 		return edges;
 	}
 
+	void resetNodePosition() {
+		for each (Node node in nodes) {
+			node.randomizePosition();
+		}
+	}
+
 	void chooseVisibleEdges() {
 		int requiredNumberOfVisibleEdges = requiredEdgeCount();
 		int visibleEdgesCount = 0;
@@ -285,7 +306,7 @@ public:
 			{
 				if (i == j)
 					continue;
-				addEdge(Edge(&nodes[i], &nodes[j], false));
+				addEdge(Edge(i, j, false));
 			}
 		}
 
@@ -295,48 +316,43 @@ public:
 	}
 
 	void draw() {
+		for each (Edge edge in edges)
+		{
+			edge.draw(nodes);
+		}
 		for each (Node node in nodes)
 		{
 			node.draw();
 		}
-		for each (Edge edge in edges)
-		{
-			edge.draw();
-		}
 	}
 
-	boolean isConnected(Node* n1, Node* n2) {
+	boolean isConnected(int n1, int n2) {
 		for (int i = 0; i < edges.size(); i++)
-		{
-			if (edges[i].getN1() == n1 && edges[i].getN2() == n2 && edges[i].getVisible())
+			if (edges[i].getNode1() == n1 && edges[i].getNode2() == n2 && edges[i].getVisible())
 				return true;
-		}
 		return false;
 	}
 
-	vec3 calculateForceFrom(Node& current, Node& other) {
-		vec3 diff = other.getPosition() - current.getPosition();
-		//std::cout << current.getDistance(other) << std::endl;
-		if (this->isConnected(&current, &other))
-			return normalize(diff) * current.getForceMagnitudeConnected(other);
-		return normalize(diff) * current.getForceMagnitudeDisconnected(other);
+	vec3 calculateForceFrom(int current, int other) {
+		vec3 diff = nodes[other].getPosition() - nodes[current].getPosition();
+		if (this->isConnected(current, other))
+			return normalize(diff) * nodes[current].getForceMagnitudeConnected(nodes[other]);
+		return normalize(diff) * nodes[current].getForceMagnitudeDisconnected(nodes[other]);
 	}
 
 	vec3 summariseForces(int nodeIndex) { //TODO
 		vec3 sum = vec3(0, 0, 0);
-		Node& currentNode = nodes[nodeIndex];
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			if (nodeIndex == i)
 				continue;
-			sum = sum + calculateForceFrom(currentNode, nodes[i]);
+			sum = sum + calculateForceFrom(nodeIndex, i);
 		}
 
 		return sum;
 	}
 
 	void modifyGraph(float deltaTime) {
-		//std::cout << "modify runs" << std::endl;
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			vec3 force = summariseForces(i);
@@ -355,15 +371,14 @@ void onInitialization() {
 	/*Node n1 = Node(vec3(0.0f, 0.0f, 0));
 	Node n2 = Node(vec3(0.0f, 1.0f, 0));
 	Node n3 = Node(vec3(1.0f, 0.0f, 0));
-	Edge e1 = Edge(&n1, &n2, true);
-	Edge e2 = Edge(&n1, &n3, true);
-	Edge e3 = Edge(&n3, &n2, true);
+	Edge e1 = Edge(0, 1, true);
+	Edge e2 = Edge(0, 2, true);
+	Edge e3 = Edge(2, 1, true);
 	graph.addNode(n1);
 	graph.addNode(n2);
 	graph.addNode(n3);
 	graph.addEdge(e1);
-
-	std::cout<<graph.isConnected(&n1, &n2)<<std::endl;*/
+	*/
 
 	for (int i = 0; i < numberOfNodes; i++) {
 		graph.addNode(Node());
@@ -387,6 +402,14 @@ void onDisplay() {
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
+	if (key == ' ' && spaceKeyDown) {
+		spaceKeyDown = false;
+		graph.resetNodePosition();
+	}
+	if (key == ' ' && !spaceKeyDown) {
+		spaceKeyTime = glutGet(GLUT_ELAPSED_TIME);
+		spaceKeyDown = true;
+	}
 }
 
 // Key of ASCII code released
@@ -424,6 +447,10 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 
-	graph.modifyGraph(0.005);
-	glutPostRedisplay();
+	if (spaceKeyDown)
+	{
+		graph.modifyGraph(spaceKeyTime - time);
+		glutPostRedisplay();
+	}
+
 }
