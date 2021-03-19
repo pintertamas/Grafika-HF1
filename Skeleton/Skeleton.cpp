@@ -63,24 +63,25 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
 float preferredDistance = 0.25f;
-float forceMultiplier = 0.1;
-float friction = 0.999999; // 0-1
-float connectedForceLimit = 0.02; // 0.01-0.05; 0 is possible but wont limit the force, so the numbers will converge to inf
-float disConnectedForceLimit = 0.001; // 0.001 - inf; this won't let the forceMagnitude of the not connected edges be inf
-//float centerizingForce = 0.9; // this determines the strength of the force that pulls the nodes towards the center of the screen
+float attraction = 0.005;
+float repulsiveForce = 0.005;
+float friction = 0.1; // 0-1
+float forceLimit = 0.5;
+
 bool spaceKeyDown = false;
 long spaceKeyTime = 0;
 
 const int numberOfNodes = 50;
 const int visibleEdgesInPercent = 5;
+long timeAtLastFrame = 0;
 
 // for debugging purposes
 void printVec3(std::string message, vec3 v) {
 	printf("%s %9.6f, %9.6f, %9.6f\n", message.c_str(), v.x, v.y, v.z);
 }
 
-float sigmoid(float x) {
-	return 1 / (1 + exp(x));
+float magicFormula(float x) {
+	return x * x / 1;
 }
 
 class Node {
@@ -99,7 +100,7 @@ public:
 		acceleration = vec3(0, 0, 0);
 	}
 
-	Node(vec3 pos) {
+	Node(vec3 pos) : Node() {
 		position = pos;
 	}
 
@@ -132,10 +133,18 @@ public:
 		return position;
 	}
 
+	void setMass(float mass) {
+		this->mass = mass;
+	}
+
 	void changePosition(vec3 vector) {
-		printVec3("pos elotte: ", this->getPosition());
 		this->position = this->position + vector;
-		printVec3("pos utana: ", this->getPosition());
+	}
+
+	void scaleNode(float lambda) {
+		this->position = this->position / lambda;
+		this->speed = this->speed / lambda;
+		this->acceleration = this->acceleration / lambda;
 	}
 
 	void move(float deltaTime) {
@@ -143,8 +152,9 @@ public:
 	}
 
 	void applyForce(vec3 force, float deltaTime) { // kb 0.000040 nagyságrenű számok
-		this->speed = this->speed + force / mass * deltaTime - friction * this->speed;
-		//printf("%9.6f, %9.6f, %9.6f\n", this->speed.x, this->speed.y, this->speed.z);
+		vec3 deltaSpeed = (force / mass) * deltaTime;
+		this->speed = this->speed + deltaSpeed;
+		this->speed = this->speed * (1 - friction);
 	}
 
 	float lorentzForce(vec3 p1, vec3 p2) {
@@ -169,22 +179,20 @@ public:
 	float getForceMagnitudeConnected(Node& other) {
 		float distance = getNormalizedDistance(other);
 		if (distance > preferredDistance) {
-			float magnitude = (sigmoid(distance - preferredDistance) - 0.5) * forceMultiplier;
-			//float magnitude = (distance - preferredDistance) * (distance - preferredDistance) * forceMultiplier;
+			float magnitude = magicFormula(distance - preferredDistance);
 			//printf("distance: %9.6f, magnitude: %9.6f\n", distance, magnitude);
-			return magnitude;
+			return min(magnitude, forceLimit);
 		}
-
 		else {
-			float magnitude = 0.01 * ((-1 / (distance + connectedForceLimit)) + (1 / preferredDistance)) * forceMultiplier;
-			//printf("distance: %9.6f, magnitude: %9.6f\n", distance, magnitude);
-			return magnitude;
+			float magnitude = 0.01 * ((-1 / distance) + (1 / preferredDistance)) * repulsiveForce;
+			return max(magnitude, -forceLimit);
 		}
 	}
 
 	float getForceMagnitudeDisconnected(Node& other) {
 		float distance = getNormalizedDistance(other);
-		return (-1 / (distance + disConnectedForceLimit)) * forceMultiplier;
+		float magnitude = (-1 / (distance)) * repulsiveForce * 5;
+		return max(magnitude, -forceLimit);
 	}
 
 	void draw() {
@@ -316,12 +324,35 @@ public:
 		return edges;
 	}
 
+	int calculateDegree(int nodeIndex) {
+		int degree = 0;
+		for (int i = 0; i < edges.size(); i++) {
+			if (edges[i].getNode1() == nodeIndex || edges[i].getNode2() == nodeIndex && edges[i].getVisible()) {
+				degree++;
+			}
+		}
+		return degree;
+	}
+
 	vec3 calculateHub() {
 		vec3 hub = vec3(0, 0, 0);
 		for each (Node node in nodes) {
 			hub = hub + node.getPosition();
 		}
 		return hub / nodes.size();
+	}
+
+	// finds the farthest node
+	float findExtremeCoordinates() {
+		float m = 0;
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			if (abs(nodes[i].getPosition().x) > m)
+				m = abs(nodes[i].getPosition().x);
+			if (abs(nodes[i].getPosition().y) > m)
+				m = abs(nodes[i].getPosition().y);
+		}
+		return m;
 	}
 
 	void resetNodePosition() {
@@ -333,18 +364,17 @@ public:
 	void chooseVisibleEdges() {
 		int requiredNumberOfVisibleEdges = requiredEdgeCount();
 		int visibleEdgesCount = 0;
-		while (visibleEdgesCount <= requiredNumberOfVisibleEdges) {
+		while (visibleEdgesCount < requiredNumberOfVisibleEdges) {
 			int randomIndex = rand() % edges.size();
 			if (edges[randomIndex].getVisible())
 				continue;
 			edges[randomIndex].setVisible();
 			visibleEdgesCount++;
 		}
+		//printf("visibleEdges: %d", visibleEdgesCount); // to check the number of visible/real edges
 	}
 
 	void createGraph() {
-		int visibleEdges = 0;
-
 		for (size_t i = 0; i < nodes.size() - 1; i++)
 		{
 			for (size_t j = i + 1; j < nodes.size(); j++)
@@ -354,10 +384,10 @@ public:
 				addEdge(Edge(i, j, false));
 			}
 		}
-
 		chooseVisibleEdges();
 
-		printf("visibleEdges: %d", visibleEdges); // to check the number of visible/real edges
+		/*for (int i = 0; i < nodes.size(); i++)
+			nodes[i].setMass((float)calculateDegree(i));*/
 	}
 
 	void moveTowardsCenter() {
@@ -408,11 +438,13 @@ public:
 		{
 			vec3 force = summariseForces(i);
 			nodes[i].applyForce(force, deltaTime);
-			nodes[i].move(deltaTime);
 		}
-		//printVec3("hub elotte: ", calculateHub());
+		for (int i = 0; i < nodes.size(); i++)
+			nodes[i].move(deltaTime);
 		moveTowardsCenter();
-		//printVec3("hub utana: ", calculateHub());
+		/*float lambda = findExtremeCoordinates();
+		for (int i = 0; i < nodes.size(); i++)
+			nodes[i].scaleNode(lambda);*/
 	}
 };
 
@@ -422,22 +454,22 @@ Graph graph;
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
-	Node n1 = Node(vec3(0.0f, 0.0f, 0));
-	Node n2 = Node(vec3(0.0f, 1.0f, 0));
-	Node n3 = Node(vec3(1.0f, 0.0f, 0));
+	/*Node n1 = Node(vec3(-1.0f, 1.0f, 0));
+	Node n2 = Node(vec3(1.0f, 1.0f, 0));
+	Node n3 = Node(vec3(-1.1f, 1.0f, 0));
 	Edge e1 = Edge(0, 1, true);
 	Edge e2 = Edge(0, 2, true);
 	Edge e3 = Edge(2, 1, true);
 	graph.addNode(n1);
-	graph.addNode(n2);
 	graph.addNode(n3);
-	graph.addEdge(e1);
+	//graph.addNode(n3);
+	//graph.addEdge(e1);
+	*/
 
-
-	/*for (int i = 0; i < numberOfNodes; i++) {
+	for (int i = 0; i < numberOfNodes; i++) {
 		graph.addNode(Node());
 	}
-	graph.createGraph();*/
+	graph.createGraph();
 
 	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
@@ -503,11 +535,12 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 
-	//if (spaceKeyDown)
-	//{
-	float deltaTime = abs(spaceKeyTime - time);
-	//printf("%9.6f\n", deltaTime);
-	graph.modifyGraph(deltaTime);
-	//}
+	float deltaTime = (float)(time - timeAtLastFrame) / 1000;
+
+	graph.modifyGraph(min(deltaTime, 0.3));
+	//printf("%6.4f\n", deltaTime);
+
+	timeAtLastFrame = glutGet(GLUT_ELAPSED_TIME);
+
 	glutPostRedisplay();
 }
