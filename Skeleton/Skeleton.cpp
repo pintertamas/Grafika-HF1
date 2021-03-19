@@ -63,8 +63,8 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
 float preferredDistance = 0.25f;
-float forceMultiplier = 0.001;
-float friction = 0.5;
+float forceMultiplier = 2;
+float friction = 0.5; // 0-1
 bool spaceKeyDown = false;
 long spaceKeyTime = 0;
 
@@ -126,22 +126,30 @@ public:
 
 	void applyForce(vec3 force, float deltaTime) { // kb 0.000040 nagyságrenű számok
 		this->speed = this->speed + force / mass * deltaTime - friction * this->speed;
-		//printf("%9.6f, %9.6f, %9.6f\n", this->speed.x, this->speed.y, this->speed.z);
+		printf("%9.6f, %9.6f, %9.6f\n", this->speed.x, this->speed.y, this->speed.z);
 	}
 
-	float getDistanceSqr(Node& other) {
+	float lorentzForce(vec3 p1, vec3 p2) {
+		return ((p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) - (p1.z - p2.z) * (p1.z - p2.z));
+	}
+
+	float getNormalizedDistanceSqr(Node& other) {
 		vec3 pos1 = this->getPosition();
 		vec3 pos2 = other.getPosition();
 		vec3 diff = pos1 - pos2;
 		return dot(diff, diff);
 	}
 
-	float getDistance(Node& other) {
-		return sqrtf(getDistanceSqr(other));
+	float getNormalizedDistance(Node& other) {
+		return sqrtf(getNormalizedDistanceSqr(other));
+	}
+
+	float getHyperbolicDistance(Node& other) {
+		return acosf(-lorentzForce(this->getPosition(), other.getPosition()));
 	}
 
 	float getForceMagnitudeConnected(Node& other) {
-		float distance = getDistance(other);
+		float distance = getNormalizedDistance(other);
 		if (distance <= preferredDistance) {
 			float magnitude = -forceMultiplier * (distance - preferredDistance) * (distance - preferredDistance);
 			//printf("distance: %9.6f, magnitude: %9.6f\n", distance, magnitude);
@@ -156,7 +164,7 @@ public:
 	}
 
 	float getForceMagnitudeDisconnected(Node& other) {
-		float distance = getDistance(other);
+		float distance = getNormalizedDistance(other);
 		return -forceMultiplier * log(distance) - 1.5;
 	}
 
@@ -170,6 +178,15 @@ public:
 		std::vector<vec2> vertices;
 
 		vertices.push_back(vec2(getPosition().x, getPosition().y));
+
+		/*int sides = 12;
+		float radius = 0.05f;
+		
+		for (int i = 0; i < sides; i++) {
+			float hyperX = ((cosf(360 / sides * i * M_PI / 180) * radius) + getPosition().x - 1);
+			float hyperY = ((sinf(360 / sides * i * M_PI / 180) * radius) + getPosition().y - 1);
+			vertices.push_back(vec2(hyperX / getPosition().z, hyperY / getPosition().z));
+		}*/
 
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
 		glEnableVertexAttribArray(0);
@@ -188,6 +205,7 @@ public:
 		glPointSize(10.0f);
 		glBindVertexArray(vao);
 		glDrawArrays(GL_POINTS, 0, 1);
+		//glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
 	}
 };
 
@@ -348,7 +366,6 @@ public:
 				continue;
 			sum = sum + calculateForceFrom(nodeIndex, i);
 		}
-
 		return sum;
 	}
 
@@ -368,7 +385,7 @@ Graph graph;
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
-	/*Node n1 = Node(vec3(0.0f, 0.0f, 0));
+	Node n1 = Node(vec3(0.0f, 0.0f, 0));
 	Node n2 = Node(vec3(0.0f, 1.0f, 0));
 	Node n3 = Node(vec3(1.0f, 0.0f, 0));
 	Edge e1 = Edge(0, 1, true);
@@ -378,12 +395,12 @@ void onInitialization() {
 	graph.addNode(n2);
 	graph.addNode(n3);
 	graph.addEdge(e1);
-	*/
+	
 
-	for (int i = 0; i < numberOfNodes; i++) {
+	/*for (int i = 0; i < numberOfNodes; i++) {
 		graph.addNode(Node());
 	}
-	graph.createGraph();
+	graph.createGraph();*/
 
 	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
@@ -402,13 +419,15 @@ void onDisplay() {
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
-	if (key == ' ' && spaceKeyDown) {
-		spaceKeyDown = false;
-		graph.resetNodePosition();
-	}
-	if (key == ' ' && !spaceKeyDown) {
-		spaceKeyTime = glutGet(GLUT_ELAPSED_TIME);
-		spaceKeyDown = true;
+	if (key == ' ') {
+		if (spaceKeyDown) {
+			spaceKeyDown = false;
+			graph.resetNodePosition();
+		}
+		else {
+			spaceKeyTime = glutGet(GLUT_ELAPSED_TIME);
+			spaceKeyDown = true;
+		}
 	}
 }
 
@@ -447,10 +466,11 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 
-	if (spaceKeyDown)
-	{
-		graph.modifyGraph(spaceKeyTime - time);
-		glutPostRedisplay();
-	}
-
+	//if (spaceKeyDown)
+	//{
+		float deltaTime = abs(spaceKeyTime - time);
+		printf("%9.6f\n", deltaTime);
+		graph.modifyGraph(deltaTime);
+	//}
+	glutPostRedisplay();
 }
