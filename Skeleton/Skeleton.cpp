@@ -63,10 +63,11 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
 float preferredDistance = 0.25f;
-float attraction = 0.005;
-float repulsiveForce = 0.005;
-float friction = 0.1; // 0-1
-float forceLimit = 0.5;
+//float attraction = 0.005;
+float repulsiveForce = 5;
+float forceLimitConnectedPositive = 0.5;
+float forceLimitConnectedNegative = 0.5;
+float forceLimitDisconnectedNegative = -3;
 
 bool spaceKeyDown = false;
 long spaceKeyTime = 0;
@@ -80,8 +81,24 @@ void printVec3(std::string message, vec3 v) {
 	printf("%s %9.6f, %9.6f, %9.6f\n", message.c_str(), v.x, v.y, v.z);
 }
 
+// distance > preferredDistance || connected
 float magicFormula(float x) {
-	return x * x / 1;
+	return 3 * (((x - preferredDistance) * (x - preferredDistance)) / 2.6) * cosf((x - preferredDistance) / 2.6);
+}
+
+// distance < preferredDistance || connected
+float magicFormula2(float x) {
+	return -magicFormula(x) * repulsiveForce * repulsiveForce;
+}
+
+// not connected
+float magicFormula3(float x) {
+	return (-1 / (x * repulsiveForce));
+}
+
+float calculateFriction() {
+	long timeFromStart = glutGet(GLUT_ELAPSED_TIME);
+	return min(timeFromStart * timeFromStart / 100000000, 1);
 }
 
 class Node {
@@ -154,7 +171,7 @@ public:
 	void applyForce(vec3 force, float deltaTime) { // kb 0.000040 nagyságrenű számok
 		vec3 deltaSpeed = (force / mass) * deltaTime;
 		this->speed = this->speed + deltaSpeed;
-		this->speed = this->speed * (1 - friction);
+		this->speed = this->speed * (1 - calculateFriction());
 	}
 
 	float lorentzForce(vec3 p1, vec3 p2) {
@@ -181,18 +198,18 @@ public:
 		if (distance > preferredDistance) {
 			float magnitude = magicFormula(distance - preferredDistance);
 			//printf("distance: %9.6f, magnitude: %9.6f\n", distance, magnitude);
-			return min(magnitude, forceLimit);
+			return min(magnitude, forceLimitConnectedPositive);
 		}
 		else {
-			float magnitude = 0.01 * ((-1 / distance) + (1 / preferredDistance)) * repulsiveForce;
-			return max(magnitude, -forceLimit);
+			float magnitude = magicFormula2(distance);
+			return max(magnitude, -forceLimitConnectedNegative);
 		}
 	}
 
 	float getForceMagnitudeDisconnected(Node& other) {
 		float distance = getNormalizedDistance(other);
-		float magnitude = (-1 / (distance)) * repulsiveForce * 5;
-		return max(magnitude, -forceLimit);
+		float magnitude = magicFormula3(distance);
+		return max(magnitude, -forceLimitDisconnectedNegative);
 	}
 
 	void draw() {
@@ -422,6 +439,12 @@ public:
 		return normalize(diff) * nodes[current].getForceMagnitudeDisconnected(nodes[other]);
 	}
 
+	void keepItOnTheScreen() {
+		float lambda = findExtremeCoordinates();
+		for (int i = 0; i < nodes.size(); i++)
+			nodes[i].scaleNode(lambda);
+	}
+
 	vec3 summariseForces(int nodeIndex) { //TODO
 		vec3 sum = vec3(0, 0, 0);
 		for (int i = 0; i < nodes.size(); i++)
@@ -442,9 +465,7 @@ public:
 		for (int i = 0; i < nodes.size(); i++)
 			nodes[i].move(deltaTime);
 		moveTowardsCenter();
-		/*float lambda = findExtremeCoordinates();
-		for (int i = 0; i < nodes.size(); i++)
-			nodes[i].scaleNode(lambda);*/
+		keepItOnTheScreen();
 	}
 };
 
@@ -454,17 +475,17 @@ Graph graph;
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
-	/*Node n1 = Node(vec3(-1.0f, 1.0f, 0));
-	Node n2 = Node(vec3(1.0f, 1.0f, 0));
-	Node n3 = Node(vec3(-1.1f, 1.0f, 0));
+	/*Node n1 = Node(vec3(-0.5f, 0.0f, 0));
+	Node n2 = Node(vec3(0.5f, 0.0f, 0));
+	Node n3 = Node(vec3(0.5f, 0.5f, 0));
 	Edge e1 = Edge(0, 1, true);
 	Edge e2 = Edge(0, 2, true);
 	Edge e3 = Edge(2, 1, true);
 	graph.addNode(n1);
+	graph.addNode(n2);
 	graph.addNode(n3);
-	//graph.addNode(n3);
-	//graph.addEdge(e1);
-	*/
+	graph.addEdge(e1);*/
+
 
 	for (int i = 0; i < numberOfNodes; i++) {
 		graph.addNode(Node());
