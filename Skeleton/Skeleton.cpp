@@ -226,7 +226,7 @@ public:
 
 	// returns the magnitude of the force that we want to apply on two connected nodes
 	float getForceMagnitudeConnected(vec3 other) {
-		float distance = getHyperbolicDistance(other);
+		float distance = getHyperbolicDistance(this->position, other);
 		if (distance > preferredDistance) {
 			float magnitude = magicFormula(distance - preferredDistance);
 			return min(magnitude, forceLimitConnectedPositive);
@@ -239,7 +239,7 @@ public:
 
 	// returns the magnitude of the force that we want to apply on two disconnected nodes
 	float getForceMagnitudeDisconnected(vec3 other) {
-		float distance = getHyperbolicDistance(other);
+		float distance = getHyperbolicDistance(this->position, other);
 		float magnitude = magicFormula3(distance);
 		return max(magnitude, -forceLimitDisconnectedNegative);
 	}
