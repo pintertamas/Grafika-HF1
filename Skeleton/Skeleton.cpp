@@ -62,15 +62,13 @@ const char* const fragmentSource = R"(
 GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
-float preferredDistance = 0.25f;
-//float attraction = 0.005;
+float preferredDistance = 0.25f; // d*
 float repulsiveForce = 5;
 float forceLimitConnectedPositive = 0.5;
 float forceLimitConnectedNegative = 0.5;
 float forceLimitDisconnectedNegative = -3;
 
-bool spaceKeyDown = false;
-long spaceKeyTime = 0;
+bool spaceKeyPressed = false;
 
 const int numberOfNodes = 50;
 const int visibleEdgesInPercent = 5;
@@ -81,7 +79,7 @@ void printVec3(std::string message, vec3 v) {
 	printf("%s %9.6f, %9.6f, %9.6f\n", message.c_str(), v.x, v.y, v.z);
 }
 
-// distance > preferredDistance || connected
+// preferredDistance < distance || connected
 float magicFormula(float x) {
 	return 3 * (((x - preferredDistance) * (x - preferredDistance)) / 2.6) * cosf((x - preferredDistance) / 2.6);
 }
@@ -96,9 +94,47 @@ float magicFormula3(float x) {
 	return (-1 / (x * repulsiveForce));
 }
 
+// calculated the friction based on the elapsed time
 float calculateFriction() {
 	long timeFromStart = glutGet(GLUT_ELAPSED_TIME);
 	return min(timeFromStart * timeFromStart / 100000000, 1);
+}
+
+//Hyperbolic coordinates to normalized ones
+	// x/z, y/z
+vec2 hyperbolicToNormalized(vec3 hyperbolic) {
+	return vec2(hyperbolic.x / hyperbolic.z, hyperbolic.y / hyperbolic.z);
+}
+
+//Normalized coordinates to hyperbolic ones
+	// 1 / (1-z^2)
+vec3 normalizedToHyperbolic(vec3 normalized) {
+	return vec3(normalized.x, normalized.y, 1.0f) / sqrt(1.0f - (normalized.x) * (normalized.x) - (normalized.y) * (normalized.y));
+}
+
+// mirrors the node to the given point (source: hw video)
+	// m = p * cosh(d) + v * sinh(d)
+vec3 mirror(vec3 p, vec3 m) {
+	float d = getHyperbolicDistance(p, m);
+	vec3 v = (m - p * coshf(d)) / sinhf(d);
+	return p * coshf(2.0f * d) + v * sinhf(2.0f * d);
+}
+
+// calculates the mirror point (source: hw video)
+vec3 midPoint(vec3 p, vec3 q) {
+	float d = getHyperbolicDistance(p, q);
+	vec3 v = (q - p * coshf(d)) / sinhf(d);
+	return p * coshf(d / 2.0f) + v * sinhf(d / 2.0f);
+}
+
+// calculates the distance in the hyperbolic space between this node and a vector (another node's position)
+float getHyperbolicDistance(vec3 current, vec3 other) {
+	return acoshf(-lorentzForce(other, current));
+}
+
+// calculates the lorentz force between two vectors
+float lorentzForce(vec3 p1, vec3 p2) {
+	return p1.x * p2.x + p1.y * p2.y - p1.z * p2.z;
 }
 
 class Node {
@@ -106,31 +142,20 @@ class Node {
 	float mass;
 	vec3 speed;
 	vec3 acceleration;
+	float pointSize;
 	unsigned int nodeVBO; //vbo for the nodes
 
 public:
-
 	Node() {
 		randomizePosition();
 		mass = 1;
 		speed = vec3(0, 0, 0);
 		acceleration = vec3(0, 0, 0);
+		pointSize = 10.0f;
 	}
 
 	Node(vec3 pos) : Node() {
 		position = pos;
-	}
-
-	//Hyperbolic coordinates to normalized ones
-	// x/z, y/z
-	vec2 scaleToNormalized(vec3 hyperbolic) {
-		return vec2(hyperbolic.x / hyperbolic.z, hyperbolic.y / hyperbolic.z);
-	}
-
-	//Normalized coordinates to hyperbolic ones
-	// 1 / (1-z^2)
-	vec3 normalizedToHyperbolic(vec3 normalized) {
-		return vec3(normalized.x, normalized.y, 1.0f) / sqrt(1.0f - (normalized.x) * (normalized.x) - (normalized.y) * (normalized.y));
 	}
 
 	void randomizePosition() {
@@ -143,61 +168,67 @@ public:
 			y = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
 		}
 		float z = 1;
-		this->position = scaleToNormalized(vec3(x, y, z));
+		this->position = normalizedToHyperbolic(vec3(x, y, z));
 	}
 
 	vec3 getPosition() {
 		return position;
 	}
 
+	vec3 getSpeed() {
+		return speed;
+	}
+
 	void setMass(float mass) {
 		this->mass = mass;
 	}
 
-	void changePosition(vec3 vector) {
+	/*void changePosition(vec3 vector) {
 		this->position = this->position + vector;
-	}
+	}*/
 
-	void scaleNode(float lambda) {
+	// scales the parameters of the node by lambda
+	/*void scaleNode(float lambda) {
 		this->position = this->position / lambda;
 		this->speed = this->speed / lambda;
 		this->acceleration = this->acceleration / lambda;
+		this->pointSize = this->pointSize / lambda;
+	}*/
+
+	// moves the node in the hyperbolic space with the given vector
+	void moveInHyperbolicSpace(vec3 q) {
+		this->position = mirror(this->position, vec3(0, 0, 1));
+		this->position = mirror(this->position, midPoint(this->position, q));
+		//this->position = normalizedToHyperbolic(this->position);
 	}
 
-	void move(float deltaTime) {
+	/*void move(float deltaTime) {
 		this->position = this->position + speed * deltaTime;
-	}
+	}*/
 
+	// applies the force on the node
 	void applyForce(vec3 force, float deltaTime) { // kb 0.000040 nagyságrenű számok
 		vec3 deltaSpeed = (force / mass) * deltaTime;
 		this->speed = this->speed + deltaSpeed;
 		this->speed = this->speed * (1 - calculateFriction());
 	}
 
-	float lorentzForce(vec3 p1, vec3 p2) {
-		return ((p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) - (p1.z - p2.z) * (p1.z - p2.z));
-	}
-
-	float getNormalizedDistanceSqr(Node& other) {
+	/*float getNormalizedDistanceSqr(Node& other) {
 		vec3 pos1 = this->getPosition();
 		vec3 pos2 = other.getPosition();
 		vec3 diff = pos1 - pos2;
 		return dot(diff, diff);
-	}
+	}*/
 
-	float getNormalizedDistance(Node& other) {
+	/*float getNormalizedDistance(Node& other) {
 		return sqrtf(getNormalizedDistanceSqr(other));
-	}
+	}*/
 
-	float getHyperbolicDistance(Node& other) {
-		return acosf(-lorentzForce(this->getPosition(), other.getPosition()));
-	}
-
-	float getForceMagnitudeConnected(Node& other) {
-		float distance = getNormalizedDistance(other);
+	// returns the magnitude of the force that we want to apply on two connected nodes
+	float getForceMagnitudeConnected(vec3 other) {
+		float distance = getHyperbolicDistance(other);
 		if (distance > preferredDistance) {
 			float magnitude = magicFormula(distance - preferredDistance);
-			//printf("distance: %9.6f, magnitude: %9.6f\n", distance, magnitude);
 			return min(magnitude, forceLimitConnectedPositive);
 		}
 		else {
@@ -206,12 +237,14 @@ public:
 		}
 	}
 
-	float getForceMagnitudeDisconnected(Node& other) {
-		float distance = getNormalizedDistance(other);
+	// returns the magnitude of the force that we want to apply on two disconnected nodes
+	float getForceMagnitudeDisconnected(vec3 other) {
+		float distance = getHyperbolicDistance(other);
 		float magnitude = magicFormula3(distance);
 		return max(magnitude, -forceLimitDisconnectedNegative);
 	}
 
+	// draws a node on the screen
 	void draw() {
 		glGenVertexArrays(1, &vao);
 		glBindVertexArray(vao);
@@ -221,16 +254,17 @@ public:
 
 		std::vector<vec2> vertices;
 
-		vertices.push_back(vec2(getPosition().x, getPosition().y));
-
-		/*int sides = 12;
+		int sides = 20;
 		float radius = 0.05f;
 
+		//vec3 pos = normalizedToHyperbolic(this->position);
+
 		for (int i = 0; i < sides; i++) {
-			float hyperX = ((cosf(360 / sides * i * M_PI / 180) * radius) + getPosition().x - 1);
-			float hyperY = ((sinf(360 / sides * i * M_PI / 180) * radius) + getPosition().y - 1);
-			vertices.push_back(vec2(hyperX / getPosition().z, hyperY / getPosition().z));
-		}*/
+			float hyperX = ((cosf(360 / sides * i * M_PI / 180) * radius) + position.x);
+			float hyperY = ((sinf(360 / sides * i * M_PI / 180) * radius) + position.y);
+
+			vertices.push_back(vec2(hyperX / position.z, hyperY / position.z));
+		}
 
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
 		glEnableVertexAttribArray(0);
@@ -246,10 +280,10 @@ public:
 		location = glGetUniformLocation(gpuProgram.getId(), "MVP");
 		glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);
 
-		glPointSize(10.0f);
+		glPointSize(pointSize);
 		glBindVertexArray(vao);
-		glDrawArrays(GL_POINTS, 0, 1);
-		//glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
+		//glDrawArrays(GL_POINTS, 0, 1);
+		glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
 	}
 };
 
@@ -283,7 +317,8 @@ public:
 		return isVisible;
 	}
 
-	void draw(std::vector<Node>& nodeList) {
+	// drawn an edge on the screen
+	void draw(vec3 p1, vec3 p2) {
 		if (isVisible) {
 			glGenVertexArrays(1, &vao);
 			glBindVertexArray(vao);
@@ -293,8 +328,8 @@ public:
 
 			std::vector<vec2> vertices;
 
-			vertices.push_back(vec2(nodeList[node1].getPosition().x, nodeList[node1].getPosition().y));
-			vertices.push_back(vec2(nodeList[node2].getPosition().x, nodeList[node2].getPosition().y));
+			vertices.push_back(hyperbolicToNormalized(vec3(p1.x, p1.y, p1.z)));
+			vertices.push_back(hyperbolicToNormalized(vec3(p2.x, p2.y, p2.z)));
 
 			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
 			glEnableVertexAttribArray(0);
@@ -329,6 +364,7 @@ public:
 		edges.push_back(e);
 	}
 
+	// returns the number of edges that we want to draw on the screen
 	int requiredEdgeCount() {
 		return (numberOfNodes * (numberOfNodes - 1) / 2) * visibleEdgesInPercent / 100;
 	}
@@ -341,6 +377,7 @@ public:
 		return edges;
 	}
 
+	// calculates the degree of the given node
 	int calculateDegree(int nodeIndex) {
 		int degree = 0;
 		for (int i = 0; i < edges.size(); i++) {
@@ -351,6 +388,7 @@ public:
 		return degree;
 	}
 
+	// calculates the hub of all nodes
 	vec3 calculateHub() {
 		vec3 hub = vec3(0, 0, 0);
 		for each (Node node in nodes) {
@@ -359,7 +397,8 @@ public:
 		return hub / nodes.size();
 	}
 
-	// finds the farthest node
+	// finds the farthest node on the screen
+	// this helps us keep the graph on the screen
 	float findExtremeCoordinates() {
 		float m = 0;
 		for (int i = 0; i < nodes.size(); i++)
@@ -372,12 +411,7 @@ public:
 		return m;
 	}
 
-	void resetNodePosition() {
-		for each (Node node in nodes) {
-			node.randomizePosition();
-		}
-	}
-
+	// sets required % of the nodes visible
 	void chooseVisibleEdges() {
 		int requiredNumberOfVisibleEdges = requiredEdgeCount();
 		int visibleEdgesCount = 0;
@@ -388,9 +422,9 @@ public:
 			edges[randomIndex].setVisible();
 			visibleEdgesCount++;
 		}
-		//printf("visibleEdges: %d", visibleEdgesCount); // to check the number of visible/real edges
 	}
 
+	// creates a graph with the required number of visible edges
 	void createGraph() {
 		for (size_t i = 0; i < nodes.size() - 1; i++)
 		{
@@ -407,24 +441,27 @@ public:
 			nodes[i].setMass((float)calculateDegree(i));*/
 	}
 
-	void moveTowardsCenter() {
+	// moves the graph towards the center by using the hub function
+	/*void moveTowardsCenter() {
 		vec3 hub = -calculateHub();
 		for (int i = 0; i < nodes.size(); i++) {
-			nodes[i].changePosition(hub);
+			nodes[i].moveInHyperbolicSpace(hub);
 		}
-	}
+	}*/
 
+	// draws the graph
 	void draw() {
-		for each (Edge edge in edges)
+		for (int i = 0; i < edges.size(); i++)
 		{
-			edge.draw(nodes);
+			edges[i].draw(nodes[edges[i].getNode1()].getPosition(), nodes[edges[i].getNode2()].getPosition());
 		}
-		for each (Node node in nodes)
+		for (int i = 0; i < nodes.size(); i++)
 		{
-			node.draw();
+			nodes[i].draw();
 		}
 	}
 
+	// returns whether two nodes are connected or not
 	boolean isConnected(int n1, int n2) {
 		for (int i = 0; i < edges.size(); i++)
 			if (edges[i].getNode1() == n1 && edges[i].getNode2() == n2 && edges[i].getVisible())
@@ -432,19 +469,22 @@ public:
 		return false;
 	}
 
+	// calculates the force between two nodes
 	vec3 calculateForceFrom(int current, int other) {
 		vec3 diff = nodes[other].getPosition() - nodes[current].getPosition();
 		if (this->isConnected(current, other))
-			return normalize(diff) * nodes[current].getForceMagnitudeConnected(nodes[other]);
-		return normalize(diff) * nodes[current].getForceMagnitudeDisconnected(nodes[other]);
+			return normalize(diff) * nodes[current].getForceMagnitudeConnected(nodes[other].getPosition());
+		return normalize(diff) * nodes[current].getForceMagnitudeDisconnected(nodes[other].getPosition());
 	}
 
-	void keepItOnTheScreen() {
+	// keeps the whole graph on the screen
+	/*void keepItOnTheScreen() {
 		float lambda = findExtremeCoordinates();
 		for (int i = 0; i < nodes.size(); i++)
 			nodes[i].scaleNode(lambda);
-	}
+	}*/
 
+	// summarises every force that influences the given node's position
 	vec3 summariseForces(int nodeIndex) { //TODO
 		vec3 sum = vec3(0, 0, 0);
 		for (int i = 0; i < nodes.size(); i++)
@@ -456,16 +496,20 @@ public:
 		return sum;
 	}
 
+	// modifies the graph based on the passed time
 	void modifyGraph(float deltaTime) {
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			vec3 force = summariseForces(i);
 			nodes[i].applyForce(force, deltaTime);
 		}
-		for (int i = 0; i < nodes.size(); i++)
-			nodes[i].move(deltaTime);
-		moveTowardsCenter();
-		keepItOnTheScreen();
+		for (int i = 0; i < nodes.size(); i++) {
+			vec3 v = nodes[i].getSpeed() * deltaTime;
+			nodes[i].moveInHyperbolicSpace(v);
+		}
+
+		//moveTowardsCenter();
+		//keepItOnTheScreen();
 	}
 };
 
@@ -475,7 +519,7 @@ Graph graph;
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
-	/*Node n1 = Node(vec3(-0.5f, 0.0f, 0));
+	Node n1 = Node(vec3(-0.5f, 0.0f, 0));
 	Node n2 = Node(vec3(0.5f, 0.0f, 0));
 	Node n3 = Node(vec3(0.5f, 0.5f, 0));
 	Edge e1 = Edge(0, 1, true);
@@ -484,7 +528,7 @@ void onInitialization() {
 	graph.addNode(n1);
 	graph.addNode(n2);
 	graph.addNode(n3);
-	graph.addEdge(e1);*/
+	graph.addEdge(e1);
 
 
 	for (int i = 0; i < numberOfNodes; i++) {
@@ -510,14 +554,8 @@ void onDisplay() {
 void onKeyboard(unsigned char key, int pX, int pY) {
 	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
 	if (key == ' ') {
-		if (spaceKeyDown) {
-			spaceKeyDown = false;
-			//graph.resetNodePosition();
-		}
-		else {
-			spaceKeyTime = glutGet(GLUT_ELAPSED_TIME);
-			spaceKeyDown = true;
-		}
+		timeAtLastFrame = glutGet(GLUT_ELAPSED_TIME);
+		spaceKeyPressed = true;
 	}
 }
 
@@ -558,8 +596,8 @@ void onIdle() {
 
 	float deltaTime = (float)(time - timeAtLastFrame) / 1000;
 
-	graph.modifyGraph(min(deltaTime, 0.3));
-	//printf("%6.4f\n", deltaTime);
+	if (spaceKeyPressed)
+		graph.modifyGraph(min(deltaTime, 0.3));
 
 	timeAtLastFrame = glutGet(GLUT_ELAPSED_TIME);
 
