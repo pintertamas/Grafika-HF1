@@ -186,7 +186,7 @@ public:
 			y = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
 		}
 		float z = 1;
-		this->position = vec3(x, y, z);
+		this->position = hyperbolicToNDC(vec3(x, y, z)); // TODO
 	}
 
 	vec3 getPosition() {
@@ -263,7 +263,7 @@ public:
 		int sides = 20;
 		float radius = 0.05f;
 
-		//vec3 pos = normalizedToHyperbolic(this->position);
+		vertices.push_back(vec2(getPosition().x, getPosition().y));
 
 		/*for (int i = 0; i < sides; i++) {
 			float hyperX = ((cosf(360.0f / sides * i * M_PI / 180.0f) * radius) + position.x);
@@ -286,10 +286,11 @@ public:
 		location = glGetUniformLocation(gpuProgram.getId(), "MVP");
 		glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);
 
-		glPointSize(pointSize);
+		glPointSize(10.0f);
+		//glPointSize(pointSize);
 		glBindVertexArray(vao);
-		//glDrawArrays(GL_POINTS, 0, 1);
-		glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
+		glDrawArrays(GL_POINTS, 0, 1);
+		//glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
 	}
 };
 
@@ -540,10 +541,15 @@ public:
 			vec3 force = summariseForces(i);
 			nodes[i].applyForce(force, deltaTime);
 		}
-		for (int i = 0; i < nodes.size(); i++) {
+		/*for (int i = 0; i < nodes.size(); i++) {
 			vec3 v = nodes[i].getSpeed() * deltaTime;
 			moveAllNodes(v);
+		}*/
+		for (int i = 0; i < nodes.size(); i++) {
+			vec3 v = deltaTime * nodes[i].getSpeed();
+			nodes[i].move(v);
 		}
+			
 		//convertToNDC();
 
 		moveTowardsCenter();
