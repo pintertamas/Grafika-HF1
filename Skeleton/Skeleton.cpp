@@ -263,24 +263,22 @@ public:
 	void draw() {
 		std::vector<vec2> vertices;
 
-		//float sides = 20.0f;
-		//float radius = 0.05f;
+		float sides = 20.0f;
+		float radius = 0.025f;
 
-		vertices.push_back(vec2(getPosition().x, getPosition().y));
-
-		/*for (int i = 0; i < sides; i++) {
+		for (int i = 0; i < sides; i++) {
 			float hyperX = ((cosf(360.0f / sides * (float)i * M_PI / 180.0f) * radius) + position.x);
 			float hyperY = ((sinf(360.0f / sides * (float)i * M_PI / 180.0f) * radius) + position.y);
 
-			vertices.push_back(vec2(hyperX / position.z, hyperY / position.z));
-		}*/
+			vertices.push_back(vec2(hyperX, hyperY));
+		}
 
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
 		glEnableVertexAttribArray(0);
 		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
 
 		int location = glGetUniformLocation(gpuProgram.getId(), "color");
-		glUniform3f(location, 1, 0, 1);
+		glUniform3f(location, 1, 0.78, 0);
 		float MVPtransf[4][4] = { 1, 0, 0, 0,
 								  0, 1, 0, 0,
 								  0, 0, 1, 0,
@@ -289,11 +287,9 @@ public:
 		location = glGetUniformLocation(gpuProgram.getId(), "MVP");
 		glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);
 
-		glPointSize(10.0f);
 		//glPointSize(pointSize);
 		glBindVertexArray(vao);
-		glDrawArrays(GL_POINTS, 0, 1);
-		//glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
+		glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
 	}
 };
 
@@ -474,8 +470,40 @@ public:
 		}
 	}
 
+	void drawCircle() {
+			std::vector<vec2> vertices;
+
+			float sides = 200.0f;
+			float radius = 1.0f;
+
+			for (int i = 0; i < sides; i++) {
+				float hyperX = (cosf(360.0f / sides * (float)i * M_PI / 180.0f) * radius);
+				float hyperY = (sinf(360.0f / sides * (float)i * M_PI / 180.0f) * radius);
+
+				vertices.push_back(vec2(hyperX, hyperY));
+			}
+
+			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+
+			int location = glGetUniformLocation(gpuProgram.getId(), "color");
+			glUniform3f(location, 0.22, 0, 0);
+			float MVPtransf[4][4] = { 1, 0, 0, 0,
+									  0, 1, 0, 0,
+									  0, 0, 1, 0,
+									  0, 0, 0, 1 };
+
+			location = glGetUniformLocation(gpuProgram.getId(), "MVP");
+			glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);
+
+			glBindVertexArray(vao);
+			glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
+	}
+
 	// draws the graph
 	void draw() {
+		drawCircle();
 		for (int i = 0; i < edges.size(); i++)
 		{
 			edges[i].draw(nodes[edges[i].getNode1()].getPosition(), nodes[edges[i].getNode2()].getPosition());
