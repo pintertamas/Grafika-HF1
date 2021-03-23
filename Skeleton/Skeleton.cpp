@@ -75,8 +75,8 @@ float friction = 0.1f;
 bool spaceKeyPressed = false;
 bool isHyperbolic = false;
 
-const int numberOfNodes = 20;
-const int visibleEdgesInPercent = 20;
+const int numberOfNodes = 30;
+const int visibleEdgesInPercent = 5;
 long timeAtLastFrame = 0;
 
 // for debugging purposes
@@ -135,15 +135,15 @@ float getDistance(vec3 from, vec3 to) {
 }
 
 //Hyperbolic coordinates to normalized device coordinates
-	// x/z, y/z
+// x/z, y/z
 vec3 hyperbolicToNDC(vec3 hyperbolic) {
 	return hyperbolic / hyperbolic.z;
 }
 
 //normalized device coordinates to hyperbolic ones
-	// 1 / (1-z^2)
-vec3 NDCToHyperbolic(vec3 normalized) {
-	return vec3(normalized.x, normalized.y, 1.0f) / sqrt(1.0f - (normalized.x) * (normalized.x) - (normalized.y) * (normalized.y));
+// (x,y,1) / sqrt(1-x^2-y^2)
+vec3 NDCToHyperbolic(vec3 NDC) {
+	return vec3(NDC.x, NDC.y, 1.0f) / sqrt(1.0f - (NDC.x) * (NDC.x) - (NDC.y) * (NDC.y));
 }
 
 // mirrors the node to the given point (source: hw video)
@@ -175,7 +175,6 @@ public:
 		mass = 1;
 		speed = vec3(0, 0, 0);
 		acceleration = vec3(0, 0, 0);
-		pointSize = 10.0f;
 		glGenBuffers(1, &nodeVBO);
 		glBindBuffer(GL_ARRAY_BUFFER, nodeVBO);
 	}
@@ -187,13 +186,13 @@ public:
 	void randomizePosition() {
 		// *2.0f is for the correct window size, the -1.0f is for the correct placement.
 		//(without them the graph would be in the top-right corner)
-		float x = -1;
-		float y = -1;
-		while (x * x + y * y >= 1) {
+		float x = -1.0f;
+		float y = -1.0f;
+		while (x * x + y * y >= 1.0f) {
 			x = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
 			y = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
 		}
-		float z = 1;
+		float z = 1.0f;
 		this->position = vec3(x, y, z);
 	}
 
@@ -265,15 +264,12 @@ public:
 		float sides = 20.0f;
 		float radius = 0.04f;
 
-		//position = NDCToHyperbolic(position);
-
 		for (int i = 0; i < sides; i++) {
 			float hyperX = (cosf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + position.x;
 			float hyperY = (sinf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + position.y;
 
-			//vec2 pos = vec2(vec2(hyperX / position.z, hyperY / position.z));
+			//vec2 pos = vec2(vec2(hyperX / NDCToHyperbolic(position).z, hyperY / NDCToHyperbolic(position).z));
 
-			//position = hyperbolicToNDC(position);
 			vertices.push_back(vec2(hyperX, hyperY));
 			//vertices.push_back(pos);
 		}
@@ -383,6 +379,26 @@ public:
 		return edges;
 	}
 
+	// creates a graph with the required number of visible edges
+	void createGraph() {
+		for (int i = 0; i < numberOfNodes; i++) {
+			this->addNode(Node());
+		}
+		for (size_t i = 0; i < nodes.size() - 1; i++)
+		{
+			for (size_t j = i + 1; j < nodes.size(); j++)
+			{
+				if (i == j)
+					continue;
+				addEdge(Edge(i, j, false));
+			}
+		}
+		chooseVisibleEdges();
+
+		/*for (int i = 0; i < nodes.size(); i++)
+			nodes[i].setMass((float)calculateDegree(i));*/
+	}
+
 	// calculates the degree of the given node
 	int calculateDegree(int nodeIndex) {
 		int degree = 0;
@@ -450,23 +466,6 @@ public:
 		}
 	}
 
-	// creates a graph with the required number of visible edges
-	void createGraph() {
-		for (size_t i = 0; i < nodes.size() - 1; i++)
-		{
-			for (size_t j = i + 1; j < nodes.size(); j++)
-			{
-				if (i == j)
-					continue;
-				addEdge(Edge(i, j, false));
-			}
-		}
-		chooseVisibleEdges();
-
-		/*for (int i = 0; i < nodes.size(); i++)
-			nodes[i].setMass((float)calculateDegree(i));*/
-	}
-
 	// moves the graph towards the center by using the hub function
 	void moveTowardsCenter() {
 		vec3 hub = -calculateHub();
@@ -476,34 +475,34 @@ public:
 	}
 
 	void drawCircle() {
-			std::vector<vec2> vertices;
+		std::vector<vec2> vertices;
 
-			float sides = 200.0f;
-			float radius = 1.0f;
+		float sides = 200.0f;
+		float radius = 1.0f;
 
-			for (int i = 0; i < sides; i++) {
-				float hyperX = (cosf(360.0f / sides * (float)i * M_PI / 180.0f) * radius);
-				float hyperY = (sinf(360.0f / sides * (float)i * M_PI / 180.0f) * radius);
+		for (int i = 0; i < sides; i++) {
+			float hyperX = (cosf(360.0f / sides * i * (float)M_PI / 180.0f) * radius);
+			float hyperY = (sinf(360.0f / sides * i * (float)M_PI / 180.0f) * radius);
 
-				vertices.push_back(vec2(hyperX, hyperY));
-			}
+			vertices.push_back(vec2(hyperX, hyperY));
+		}
 
-			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
-			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
 
-			int location = glGetUniformLocation(gpuProgram.getId(), "color");
-			glUniform3f(location, 0.22, 0, 0);
-			float MVPtransf[4][4] = { 1, 0, 0, 0,
-									  0, 1, 0, 0,
-									  0, 0, 1, 0,
-									  0, 0, 0, 1 };
+		int location = glGetUniformLocation(gpuProgram.getId(), "color");
+		glUniform3f(location, 0.22, 0, 0);
+		float MVPtransf[4][4] = { 1, 0, 0, 0,
+								  0, 1, 0, 0,
+								  0, 0, 1, 0,
+								  0, 0, 0, 1 };
 
-			location = glGetUniformLocation(gpuProgram.getId(), "MVP");
-			glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);
+		location = glGetUniformLocation(gpuProgram.getId(), "MVP");
+		glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);
 
-			glBindVertexArray(vao);
-			glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
+		glBindVertexArray(vao);
+		glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
 	}
 
 	// draws the graph
@@ -610,13 +609,13 @@ void onInitialization() {
 	/*Node n1 = Node(vec3(-0.5f, 0.0f));
 	Node n2 = Node(vec3(0.5f, 0.0f));
 	Node n3 = Node(vec3(0.5f, 0.5f));
-	Node n4 = Node(vec3(0.5f, 1.5f));
-	Node n5 = Node(vec3(0.51f, 1.511f));
+	Node n4 = Node(vec3(-0.5f, 0.5f));
+	Node n5 = Node(vec3(0.0f, 0.0f));
 	Edge e1 = Edge(0, 1, true);
 	Edge e2 = Edge(0, 2, true);
 	Edge e3 = Edge(2, 1, true);
 	Edge e4 = Edge(3, 0, true);
-	Edge e5 = Edge(4, 0, true);
+	Edge e5 = Edge(3, 4, true);
 
 	graph.addNode(n1);
 	graph.addNode(n2);
@@ -629,9 +628,6 @@ void onInitialization() {
 	graph.addEdge(e4);
 	graph.addEdge(e5);*/
 
-	for (int i = 0; i < numberOfNodes; i++) {
-		graph.addNode(Node());
-	}
 	graph.createGraph();
 
 	// create program for the GPU
@@ -643,9 +639,8 @@ void onDisplay() {
 	glClearColor(0, 0, 0, 0);     // background color
 	glClear(GL_COLOR_BUFFER_BIT); // clear frame buffer
 
-	//graph.convertToHyperbolic();
 	graph.draw();
-	//graph.convertToNDC();
+	
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
