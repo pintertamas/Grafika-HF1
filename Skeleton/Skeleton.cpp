@@ -236,7 +236,6 @@ public:
 		vec3 deltaSpeed = (force / mass) * deltaTime;
 		this->speed = this->speed + deltaSpeed;
 		this->speed = this->speed * (1 - friction);
-		//printVec3("speed: ", speed);
 	}
 
 	// returns the magnitude of the force that we want to apply on two connected nodes
@@ -264,13 +263,19 @@ public:
 		std::vector<vec2> vertices;
 
 		float sides = 20.0f;
-		float radius = 0.025f;
+		float radius = 0.04f;
+
+		//position = NDCToHyperbolic(position);
 
 		for (int i = 0; i < sides; i++) {
-			float hyperX = ((cosf(360.0f / sides * (float)i * M_PI / 180.0f) * radius) + position.x);
-			float hyperY = ((sinf(360.0f / sides * (float)i * M_PI / 180.0f) * radius) + position.y);
+			float hyperX = (cosf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + position.x;
+			float hyperY = (sinf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + position.y;
 
+			//vec2 pos = vec2(vec2(hyperX / position.z, hyperY / position.z));
+
+			//position = hyperbolicToNDC(position);
 			vertices.push_back(vec2(hyperX, hyperY));
+			//vertices.push_back(pos);
 		}
 
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
