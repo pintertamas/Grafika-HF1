@@ -65,20 +65,18 @@ unsigned int vao;	   // virtual world on the GPU
 float preferredDistance = 0.25f; // d*
 float repulsiveForce = 20.0f;
 float repulsiveForceDC = 10.0f;
-float forceLimitConnectedPositive = 2.0f;
+float forceLimitConnectedPositive = 20.0f;
 float forceLimitConnectedNegative = 10.0f;
-float forceLimitDisconnectedNegative = 10.0f;
-float disconnectedForceMultiplier = 0.001f;
-float connectedForceMultiplier = 20.0f;
-float friction = 0.01f;
+float forceLimitDisconnectedNegative = 50.0f;
+float disconnectedForceMultiplier = 10.0f;
+float connectedForceMultiplier = 2000.0f;
+float friction = 0.1f;
 
 bool spaceKeyPressed = false;
 bool isHyperbolic = false;
 
-int edgeCnt = 1;
-
-const int numberOfNodes = 2;
-const int visibleEdgesInPercent = 5;
+const int numberOfNodes = 20;
+const int visibleEdgesInPercent = 20;
 long timeAtLastFrame = 0;
 
 // for debugging purposes
@@ -98,7 +96,7 @@ float magicFormula2(float x) {
 
 // not connected
 float magicFormula3(float x) {
-	return disconnectedForceMultiplier / (x * repulsiveForceDC) + 2 * preferredDistance / repulsiveForceDC;
+	return disconnectedForceMultiplier / (x * repulsiveForceDC) + 1 * preferredDistance / repulsiveForceDC;
 }
 
 // calculated the friction based on the elapsed time
@@ -178,6 +176,8 @@ public:
 		speed = vec3(0, 0, 0);
 		acceleration = vec3(0, 0, 0);
 		pointSize = 10.0f;
+		glGenBuffers(1, &nodeVBO);
+		glBindBuffer(GL_ARRAY_BUFFER, nodeVBO);
 	}
 
 	Node(vec3 pos) : Node() {
@@ -194,7 +194,7 @@ public:
 			y = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
 		}
 		float z = 1;
-		this->position = hyperbolicToNDC(vec3(x, y, z)); // TODO
+		this->position = vec3(x, y, z);
 	}
 
 	vec3 getPosition() {
@@ -261,16 +261,10 @@ public:
 
 	// draws a node on the screen
 	void draw() {
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
-
-		glGenBuffers(1, &nodeVBO);
-		glBindBuffer(GL_ARRAY_BUFFER, nodeVBO);
-
 		std::vector<vec2> vertices;
 
-		float sides = 20.0f;
-		float radius = 0.05f;
+		//float sides = 20.0f;
+		//float radius = 0.05f;
 
 		vertices.push_back(vec2(getPosition().x, getPosition().y));
 
@@ -314,6 +308,8 @@ public:
 		node1 = nodeIndex1;
 		node2 = nodeIndex2;
 		isVisible = shouldDraw;
+		glGenBuffers(1, &edgeVBO);
+		glBindBuffer(GL_ARRAY_BUFFER, edgeVBO);
 	}
 
 	void setVisible() {
@@ -335,12 +331,6 @@ public:
 	// drawn an edge on the screen
 	void draw(vec3 p1, vec3 p2) {
 		if (isVisible) {
-			glGenVertexArrays(1, &vao);
-			glBindVertexArray(vao);
-
-			glGenBuffers(1, &edgeVBO);
-			glBindBuffer(GL_ARRAY_BUFFER, edgeVBO);
-
 			std::vector<vec2> vertices;
 
 			vertices.push_back(vec2(p1.x, p1.y));
@@ -381,8 +371,7 @@ public:
 
 	// returns the number of edges that we want to draw on the screen
 	int requiredEdgeCount() {
-		//return (numberOfNodes * (numberOfNodes - 1) / 2) * visibleEdgesInPercent / 100;
-		return edgeCnt;
+		return (numberOfNodes * (numberOfNodes - 1) / 2) * visibleEdgesInPercent / 100;
 	}
 
 	std::vector<Node> getNodes() {
@@ -582,30 +571,35 @@ Graph graph;
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
 
-	Node n1 = Node(vec3(-0.5f, 0.0f));
+	/*Node n1 = Node(vec3(-0.5f, 0.0f));
 	Node n2 = Node(vec3(0.5f, 0.0f));
 	Node n3 = Node(vec3(0.5f, 0.5f));
 	Node n4 = Node(vec3(0.5f, 1.5f));
+	Node n5 = Node(vec3(0.51f, 1.511f));
 	Edge e1 = Edge(0, 1, true);
 	Edge e2 = Edge(0, 2, true);
 	Edge e3 = Edge(2, 1, true);
 	Edge e4 = Edge(3, 0, true);
+	Edge e5 = Edge(4, 0, true);
 
 	graph.addNode(n1);
 	graph.addNode(n2);
 	graph.addNode(n3);
 	graph.addNode(n4);
+	graph.addNode(n5);
 	graph.addEdge(e1);
 	graph.addEdge(e2);
 	graph.addEdge(e3);
 	graph.addEdge(e4);
-	
+	graph.addEdge(e5);*/
 
-	/*for (int i = 0; i < numberOfNodes; i++) {
+	for (int i = 0; i < numberOfNodes; i++) {
 		graph.addNode(Node());
 	}
-	graph.createGraph();*/
+	graph.createGraph();
 
 	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
