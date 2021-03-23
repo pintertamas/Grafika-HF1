@@ -18,8 +18,8 @@
 //
 // NYILATKOZAT
 // ---------------------------------------------------------------------------------------------
-// Nev    : 
-// Neptun : 
+// Nev    : Pintér Tamás
+// Neptun : JY4D5L
 // ---------------------------------------------------------------------------------------------
 // ezennel kijelentem, hogy a feladatot magam keszitettem, es ha barmilyen segitseget igenybe vettem vagy
 // mas szellemi termeket felhasznaltam, akkor a forrast es az atvett reszt kommentekben egyertelmuen jeloltem.
@@ -63,15 +63,21 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
 float preferredDistance = 0.25f; // d*
-float repulsiveForce = 5;
-float forceLimitConnectedPositive = 0.5;
-float forceLimitConnectedNegative = 0.5;
-float forceLimitDisconnectedNegative = -3;
+float repulsiveForce = 20.0f;
+float repulsiveForceDC = 10.0f;
+float forceLimitConnectedPositive = 2.0f;
+float forceLimitConnectedNegative = 10.0f;
+float forceLimitDisconnectedNegative = 10.0f;
+float disconnectedForceMultiplier = 0.001f;
+float connectedForceMultiplier = 20.0f;
+float friction = 0.01f;
 
 bool spaceKeyPressed = false;
 bool isHyperbolic = false;
 
-const int numberOfNodes = 50;
+int edgeCnt = 1;
+
+const int numberOfNodes = 2;
 const int visibleEdgesInPercent = 5;
 long timeAtLastFrame = 0;
 
@@ -82,7 +88,7 @@ void printVec3(std::string message, vec3 v) {
 
 // preferredDistance < distance || connected
 float magicFormula(float x) {
-	return 3 * (((x - preferredDistance) * (x - preferredDistance)) / 2.6) * cosf((x - preferredDistance) / 2.6);
+	return connectedForceMultiplier * (((x - preferredDistance) * (x - preferredDistance)) / 2.6f) * cosf((x - preferredDistance) / 2.6f);
 }
 
 // distance < preferredDistance || connected
@@ -92,13 +98,15 @@ float magicFormula2(float x) {
 
 // not connected
 float magicFormula3(float x) {
-	return (-1 / (x * repulsiveForce));
+	return disconnectedForceMultiplier / (x * repulsiveForceDC) + 2 * preferredDistance / repulsiveForceDC;
 }
 
 // calculated the friction based on the elapsed time
 float calculateFriction() {
 	long timeFromStart = glutGet(GLUT_ELAPSED_TIME);
-	return min(timeFromStart * timeFromStart / 100000000, 1);
+	float a = (float)timeFromStart * (float)timeFromStart / 100000000.0f;
+	float friction = min(a, 1.0f);
+	return (float)friction;
 }
 
 // calculates the lorentz force between two vectors
@@ -107,8 +115,8 @@ float lorentzForce(vec3 p1, vec3 p2) {
 }
 
 float getNormalizedDistanceSqr(vec3 from, vec3 to) {
-		vec3 diff = from - to;
-		return dot(diff, diff);
+	vec3 diff = from - to;
+	return dot(diff, diff);
 }
 
 float getNormalizedDistance(vec3 from, vec3 to) {
@@ -227,19 +235,20 @@ public:
 	void applyForce(vec3 force, float deltaTime) { // kb 0.000040 nagyságrenű számok
 		vec3 deltaSpeed = (force / mass) * deltaTime;
 		this->speed = this->speed + deltaSpeed;
-		this->speed = this->speed * (1 - calculateFriction());
+		this->speed = this->speed * (1 - friction);
+		//printVec3("speed: ", speed);
 	}
 
 	// returns the magnitude of the force that we want to apply on two connected nodes
 	float getForceMagnitudeConnected(vec3 other) {
 		float distance = getDistance(this->position, other);
 		if (distance > preferredDistance) {
-			float magnitude = magicFormula(distance - preferredDistance);
+			float magnitude = magicFormula(distance);
 			return min(magnitude, forceLimitConnectedPositive);
 		}
 		else {
 			float magnitude = magicFormula2(distance);
-			return max(magnitude, -forceLimitConnectedNegative);
+			return min(magnitude, forceLimitConnectedNegative);
 		}
 	}
 
@@ -247,7 +256,7 @@ public:
 	float getForceMagnitudeDisconnected(vec3 other) {
 		float distance = getDistance(this->position, other);
 		float magnitude = magicFormula3(distance);
-		return max(magnitude, -forceLimitDisconnectedNegative);
+		return min(magnitude, forceLimitDisconnectedNegative);
 	}
 
 	// draws a node on the screen
@@ -260,14 +269,14 @@ public:
 
 		std::vector<vec2> vertices;
 
-		int sides = 20;
+		float sides = 20.0f;
 		float radius = 0.05f;
 
 		vertices.push_back(vec2(getPosition().x, getPosition().y));
 
 		/*for (int i = 0; i < sides; i++) {
-			float hyperX = ((cosf(360.0f / sides * i * M_PI / 180.0f) * radius) + position.x);
-			float hyperY = ((sinf(360.0f / sides * i * M_PI / 180.0f) * radius) + position.y);
+			float hyperX = ((cosf(360.0f / sides * (float)i * M_PI / 180.0f) * radius) + position.x);
+			float hyperY = ((sinf(360.0f / sides * (float)i * M_PI / 180.0f) * radius) + position.y);
 
 			vertices.push_back(vec2(hyperX / position.z, hyperY / position.z));
 		}*/
@@ -372,7 +381,8 @@ public:
 
 	// returns the number of edges that we want to draw on the screen
 	int requiredEdgeCount() {
-		return (numberOfNodes * (numberOfNodes - 1) / 2) * visibleEdgesInPercent / 100;
+		//return (numberOfNodes * (numberOfNodes - 1) / 2) * visibleEdgesInPercent / 100;
+		return edgeCnt;
 	}
 
 	std::vector<Node> getNodes() {
@@ -489,18 +499,27 @@ public:
 
 	// returns whether two nodes are connected or not
 	boolean isConnected(int n1, int n2) {
-		for (int i = 0; i < edges.size(); i++)
+		for (int i = 0; i < edges.size(); i++) {
 			if (edges[i].getNode1() == n1 && edges[i].getNode2() == n2 && edges[i].getVisible())
 				return true;
+			if (edges[i].getNode1() == n2 && edges[i].getNode2() == n1 && edges[i].getVisible())
+				return true;
+		}
 		return false;
 	}
 
 	// calculates the force between two nodes
 	vec3 calculateForceFrom(int current, int other) {
-		vec3 diff = nodes[other].getPosition() - nodes[current].getPosition();
-		if (this->isConnected(current, other))
-			return normalize(diff) * nodes[current].getForceMagnitudeConnected(nodes[other].getPosition());
-		return normalize(diff) * nodes[current].getForceMagnitudeDisconnected(nodes[other].getPosition());
+		vec3 currentPosition = nodes[current].getPosition();
+		vec3 otherPosition = nodes[other].getPosition();
+		vec3 diff = otherPosition - currentPosition;
+		vec3 direction = normalize(diff);
+		if (this->isConnected(current, other)) {
+			vec3 forceConnected = direction * nodes[current].getForceMagnitudeConnected(otherPosition);
+			return forceConnected;
+		}
+		vec3 forceDisconnected = -direction * nodes[current].getForceMagnitudeDisconnected(otherPosition);
+		return forceDisconnected;
 	}
 
 	// keeps the whole graph on the screen
@@ -510,8 +529,8 @@ public:
 			nodes[i].scaleNode(lambda);
 	}
 
-	// summarises every force that influences the given node's position
-	vec3 summariseForces(int nodeIndex) { //TODO
+	// summarizes every force that influences the given node's position
+	vec3 summarizeForces(int nodeIndex) { //TODO
 		vec3 sum = vec3(0, 0, 0);
 		for (int i = 0; i < nodes.size(); i++)
 		{
@@ -525,7 +544,7 @@ public:
 	// m = p * cosh(d) + v * sinh(d)
 	void moveAllNodes(vec3 v) {
 		vec3 m1 = vec3(0, 0, 1);
-		vec3 m2 = vec3(0,0,1); // TODO
+		vec3 m2 = vec3(0, 0, 1); // TODO
 
 		for (int i = 0; i < nodes.size(); i++) {
 			nodes[i].doubleMirror(m1, m2);
@@ -538,7 +557,8 @@ public:
 		//convertToHyperbolic();
 		for (int i = 0; i < nodes.size(); i++)
 		{
-			vec3 force = summariseForces(i);
+			vec3 force = summarizeForces(i);
+			//printVec3("force: ", force);
 			nodes[i].applyForce(force, deltaTime);
 		}
 		/*for (int i = 0; i < nodes.size(); i++) {
@@ -549,11 +569,11 @@ public:
 			vec3 v = deltaTime * nodes[i].getSpeed();
 			nodes[i].move(v);
 		}
-			
+
 		//convertToNDC();
 
 		moveTowardsCenter();
-		keepItOnTheScreen();
+		//keepItOnTheScreen();
 	}
 };
 
@@ -563,22 +583,29 @@ Graph graph;
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
-	Node n1 = Node(vec3(-0.5f, 0.0f, 0));
-	Node n2 = Node(vec3(0.5f, 0.0f, 0));
-	Node n3 = Node(vec3(0.5f, 0.5f, 0));
+	Node n1 = Node(vec3(-0.5f, 0.0f));
+	Node n2 = Node(vec3(0.5f, 0.0f));
+	Node n3 = Node(vec3(0.5f, 0.5f));
+	Node n4 = Node(vec3(0.5f, 1.5f));
 	Edge e1 = Edge(0, 1, true);
 	Edge e2 = Edge(0, 2, true);
 	Edge e3 = Edge(2, 1, true);
+	Edge e4 = Edge(3, 0, true);
+
 	graph.addNode(n1);
 	graph.addNode(n2);
 	graph.addNode(n3);
+	graph.addNode(n4);
 	graph.addEdge(e1);
+	graph.addEdge(e2);
+	graph.addEdge(e3);
+	graph.addEdge(e4);
+	
 
-
-	for (int i = 0; i < numberOfNodes; i++) {
+	/*for (int i = 0; i < numberOfNodes; i++) {
 		graph.addNode(Node());
 	}
-	graph.createGraph();
+	graph.createGraph();*/
 
 	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
@@ -589,7 +616,9 @@ void onDisplay() {
 	glClearColor(0, 0, 0, 0);     // background color
 	glClear(GL_COLOR_BUFFER_BIT); // clear frame buffer
 
+	//graph.convertToHyperbolic();
 	graph.draw();
+	//graph.convertToNDC();
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
@@ -638,10 +667,10 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 
-	float deltaTime = (float)(time - timeAtLastFrame) / 1000;
-
-	if (spaceKeyPressed)
+	if (spaceKeyPressed) {
+		float deltaTime = (float)(time - timeAtLastFrame) / 1000;
 		graph.modifyGraph(min(deltaTime, 0.3));
+	}
 
 	timeAtLastFrame = glutGet(GLUT_ELAPSED_TIME);
 
