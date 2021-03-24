@@ -81,7 +81,7 @@ float radialForceMultiplier = 1.0f;
 bool spaceKeyPressed = false;
 bool isHyperbolic = false;
 
-const int numberOfNodes = 20;
+const int numberOfNodes = 50;
 const int visibleEdgesInPercent = 5;
 long timeAtLastFrame = 0;
 
@@ -577,12 +577,18 @@ public:
 	}
 
 	// m = p * cosh(d) + v * sinh(d)
-	void moveAllNodes(vec3 v) {
+	/*void moveAllNodes(vec3 v) {
 		vec3 m1 = vec3(0, 0, 1);
 		vec3 m2 = vec3(0, 0, 1); // TODO
 
 		for (int i = 0; i < nodes.size(); i++) {
 			nodes[i].setPosition(doubleMirror(nodes[i].getPosition(), m1, m2));
+		}
+	}*/
+
+	void moveAllNodes(vec3 v) {
+		for (int i = 0; i < nodes.size(); i++) {
+			nodes[i].move(v);
 		}
 	}
 
@@ -602,7 +608,7 @@ public:
 			nodes[i].move(v);
 		}
 
-		moveTowardsCenter();
+		//moveTowardsCenter();
 		//keepItOnTheScreen();
 	}
 };
@@ -628,7 +634,6 @@ void onDisplay() {
 
 	graph.draw();
 
-
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
 
@@ -651,6 +656,7 @@ void onMouseMotion(int pX, int pY) {	// pX, pY are the pixel coordinates of the 
 	float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
 	float cY = 1.0f - 2.0f * pY / windowHeight;
 	printf("Mouse moved to (%3.2f, %3.2f)\n", cX, cY);
+	graph.moveAllNodes(0.06 * vec3(cX, cY, 0));
 }
 
 // Mouse click event
