@@ -73,6 +73,7 @@ float connectedForceMultiplierBot = 50.0f;
 float repulsiveForceDC = 10.0f;
 float forceLimitDisconnectedNegative = 50.0f;
 float disconnectedForceMultiplier = 3.0f;
+
 float friction = 0.1f;
 
 float radialForceMultiplier = 1.0f;
@@ -264,20 +265,17 @@ public:
 	}
 
 	// draws a node on the screen
-	void draw() {
+	void drawNode() {
 		std::vector<vec2> vertices;
 
 		float sides = 20.0f;
-		float radius = 0.04f;
+		float radius = 0.05f;
 
 		for (int i = 0; i < sides; i++) {
-			float hyperX = (cosf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + position.x;
-			float hyperY = (sinf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + position.y;
+			float hyperX = (cosf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + NDCToHyperbolic(position).x;
+			float hyperY = (sinf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + NDCToHyperbolic(position).y;
 
-			//vec2 pos = vec2(vec2(hyperX / NDCToHyperbolic(position).z, hyperY / NDCToHyperbolic(position).z));
-
-			vertices.push_back(vec2(hyperX, hyperY));
-			//vertices.push_back(pos);
+			vertices.push_back(vec2(hyperX / NDCToHyperbolic(position).z, hyperY / NDCToHyperbolic(position).z));
 		}
 
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
@@ -299,76 +297,18 @@ public:
 	}
 };
 
-class Edge {
-	int node1;
-	int node2;
-	bool isVisible = false;
-	unsigned int edgeVBO; //vbo for the edges
-
-public:
-	Edge(int nodeIndex1, int nodeIndex2, bool shouldDraw) {
-		node1 = nodeIndex1;
-		node2 = nodeIndex2;
-		isVisible = shouldDraw;
-		glGenBuffers(1, &edgeVBO);
-		glBindBuffer(GL_ARRAY_BUFFER, edgeVBO);
-	}
-
-	void setVisible() {
-		isVisible = true;
-	}
-
-	int getNode1() {
-		return node1;
-	}
-
-	int getNode2() {
-		return node2;
-	}
-
-	boolean getVisible() {
-		return isVisible;
-	}
-
-	// drawn an edge on the screen
-	void draw(vec3 p1, vec3 p2) {
-		if (isVisible) {
-			std::vector<vec2> vertices;
-
-			vertices.push_back(vec2(p1.x, p1.y));
-			vertices.push_back(vec2(p2.x, p2.y));
-
-			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
-			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
-
-			int location = glGetUniformLocation(gpuProgram.getId(), "color");
-			glUniform3f(location, 1, 1, 0);
-			float MVPtransf[4][4] = { 1, 0, 0, 0,
-									  0, 1, 0, 0,
-									  0, 0, 1, 0,
-									  0, 0, 0, 1 };
-
-			location = glGetUniformLocation(gpuProgram.getId(), "MVP");
-			glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);
-
-			glBindVertexArray(vao);
-			glDrawArrays(GL_LINE_STRIP, 0, vertices.size());
-		}
-	}
-};
-
 class Graph {
 private:
 	std::vector<Node> nodes;
-	std::vector<Edge> edges;
+	std::vector<int> edges;
 public:
 	void addNode(Node n) {
 		nodes.push_back(n);
 	}
 
-	void addEdge(Edge e) {
-		edges.push_back(e);
+	void addEdge(int nx, int ny) {
+		edges.push_back(nx);
+		edges.push_back(ny);
 	}
 
 	// returns the number of edges that we want to draw on the screen
@@ -380,40 +320,29 @@ public:
 		return nodes;
 	}
 
-	std::vector<Edge> getEdges() {
-		return edges;
-	}
-
 	// creates a graph with the required number of visible edges
 	void createGraph() {
 		for (int i = 0; i < numberOfNodes; i++) {
 			this->addNode(Node());
 		}
-		for (size_t i = 0; i < nodes.size() - 1; i++)
-		{
-			for (size_t j = i + 1; j < nodes.size(); j++)
-			{
-				if (i == j)
-					continue;
-				addEdge(Edge(i, j, false));
-			}
-		}
 		chooseVisibleEdges();
-		deleteInvisibleEdges();
-
-		/*for (int i = 0; i < nodes.size(); i++)
-			nodes[i].setMass((float)calculateDegree(i));*/
+		//calculateDegrees();
 	}
 
 	// calculates the degree of the given node
 	int calculateDegree(int nodeIndex) {
 		int degree = 0;
 		for (int i = 0; i < edges.size(); i++) {
-			if (edges[i].getNode1() == nodeIndex || edges[i].getNode2() == nodeIndex && edges[i].getVisible()) {
+			if (edges[i] == nodeIndex) {
 				degree++;
 			}
 		}
 		return degree;
+	}
+
+	void calculateDegrees() {
+		for (int i = 0; i < nodes.size(); i++)
+			nodes[i].setMass((float)calculateDegree(i));
 	}
 
 	// calculates the hub of all nodes
@@ -443,22 +372,31 @@ public:
 	void chooseVisibleEdges() {
 		int requiredNumberOfVisibleEdges = requiredEdgeCount();
 		int visibleEdgesCount = 0;
+		std::vector<int> res;
 		while (visibleEdgesCount < requiredNumberOfVisibleEdges) {
-			int randomIndex = rand() % edges.size();
-			if (edges[randomIndex].getVisible())
-				continue;
-			edges[randomIndex].setVisible();
-			visibleEdgesCount++;
-		}
-	}
+			boolean visible = true;
+			int randomIndex1 = rand() % nodes.size();
+			int randomIndex2 = rand() % nodes.size();
 
-	void deleteInvisibleEdges() {
-		std::vector<Edge> res;
-		for (int i = 0; i < edges.size(); i++)
-		{
-			if (edges[i].getVisible())
+			if (randomIndex1 == randomIndex2)
+				visible = false;
+
+			if (res.size() > 1)
 			{
-				res.push_back(edges[i]);
+				for (int i = 0; i < res.size() - 1; i++)
+				{
+					if (res[i] == randomIndex1 && res[i + 1] == randomIndex2 || res[i] == randomIndex2 && res[i + 1] == randomIndex1)
+					{
+						visible = false;
+					}
+				}
+			}
+
+			if (visible)
+			{
+				res.push_back(randomIndex1);
+				res.push_back(randomIndex2);
+				visibleEdgesCount++;
 			}
 		}
 		edges = res;
@@ -523,25 +461,50 @@ public:
 		glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
 	}
 
+	// draws the edges on the screen
+	void drawEdges() {
+		std::vector<vec2> vertices;
+
+		for (int i = 0; i < edges.size() - 1; i++)
+		{
+			vertices.push_back(vec2(nodes[edges[i]].getPosition().x, (nodes[edges[i]].getPosition().y)));
+			vertices.push_back(vec2(nodes[edges[i + 1]].getPosition().x, (nodes[edges[i + 1]].getPosition().y)));
+		}
+
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+
+		int location = glGetUniformLocation(gpuProgram.getId(), "color");
+		glUniform3f(location, 1, 1, 0);
+		float MVPtransf[4][4] = { 1, 0, 0, 0,
+								  0, 1, 0, 0,
+								  0, 0, 1, 0,
+								  0, 0, 0, 1 };
+
+		location = glGetUniformLocation(gpuProgram.getId(), "MVP");
+		glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);
+
+		glBindVertexArray(vao);
+		glDrawArrays(GL_LINES, 0, vertices.size());
+	}
+
 	// draws the graph
 	void draw() {
 		drawCircle();
-		for (int i = 0; i < edges.size(); i++)
-		{
-			edges[i].draw(nodes[edges[i].getNode1()].getPosition(), nodes[edges[i].getNode2()].getPosition());
-		}
+		drawEdges();
 		for (int i = 0; i < nodes.size(); i++)
 		{
-			nodes[i].draw();
+			nodes[i].drawNode();
 		}
 	}
 
 	// returns whether two nodes are connected or not
 	boolean isConnected(int n1, int n2) {
-		for (int i = 0; i < edges.size(); i++) {
-			if (edges[i].getNode1() == n1 && edges[i].getNode2() == n2 && edges[i].getVisible())
+		for (int i = 0; i < edges.size() - 1; i++) {
+			if (edges[i] == n1 && edges[i + 1] == n2)
 				return true;
-			if (edges[i].getNode1() == n2 && edges[i].getNode2() == n1 && edges[i].getVisible())
+			if (edges[i] == n2 && edges[i] == n1)
 				return true;
 		}
 		return false;
@@ -623,28 +586,6 @@ void onInitialization() {
 	glGenVertexArrays(1, &vao);
 	glBindVertexArray(vao);
 
-	/*Node n1 = Node(vec3(-0.5f, 0.0f));
-	Node n2 = Node(vec3(0.5f, 0.0f));
-	Node n3 = Node(vec3(0.5f, 0.5f));
-	Node n4 = Node(vec3(-0.5f, 0.5f));
-	Node n5 = Node(vec3(0.0f, 0.0f));
-	Edge e1 = Edge(0, 1, true);
-	Edge e2 = Edge(0, 2, true);
-	Edge e3 = Edge(2, 1, true);
-	Edge e4 = Edge(3, 0, true);
-	Edge e5 = Edge(3, 4, true);
-
-	graph.addNode(n1);
-	graph.addNode(n2);
-	graph.addNode(n3);
-	graph.addNode(n4);
-	graph.addNode(n5);
-	graph.addEdge(e1);
-	graph.addEdge(e2);
-	graph.addEdge(e3);
-	graph.addEdge(e4);
-	graph.addEdge(e5);*/
-
 	graph.createGraph();
 
 	// create program for the GPU
@@ -657,7 +598,7 @@ void onDisplay() {
 	glClear(GL_COLOR_BUFFER_BIT); // clear frame buffer
 
 	graph.draw();
-	
+
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
