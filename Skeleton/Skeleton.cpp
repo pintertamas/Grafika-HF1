@@ -400,6 +400,7 @@ public:
 			}
 		}
 		chooseVisibleEdges();
+		deleteInvisibleEdges();
 
 		/*for (int i = 0; i < nodes.size(); i++)
 			nodes[i].setMass((float)calculateDegree(i));*/
@@ -450,6 +451,18 @@ public:
 			edges[randomIndex].setVisible();
 			visibleEdgesCount++;
 		}
+	}
+
+	void deleteInvisibleEdges() {
+		std::vector<Edge> res;
+		for (int i = 0; i < edges.size(); i++)
+		{
+			if (edges[i].getVisible())
+			{
+				res.push_back(edges[i]);
+			}
+		}
+		edges = res;
 	}
 
 	void convertToHyperbolic() {
@@ -580,7 +593,6 @@ public:
 		for (int i = 0; i < nodes.size(); i++) {
 			nodes[i].doubleMirror(m1, m2);
 		}
-
 	}
 
 	// modifies the graph based on the passed time
