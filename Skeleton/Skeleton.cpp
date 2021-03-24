@@ -161,6 +161,14 @@ vec3 mirror(vec3 p, vec3 m) {
 	return p * coshf(2.0f * d) + v * sinhf(2.0f * d);
 }
 
+// moves the node in the hyperbolic space with the given vector
+vec3 doubleMirror(vec3 p, vec3 m1, vec3 m2) {
+	vec3 p2;
+	p2 = mirror(p, m1);
+	p2 = mirror(p2, m2);
+	return p2;
+}
+
 // calculates the midpoint of two points (source: hw video)
 vec3 midPoint(vec3 p, vec3 q) {
 	float d = getDistance(p, q);
@@ -219,12 +227,6 @@ public:
 		this->mass = mass;
 	}
 
-	// moves the node in the hyperbolic space with the given vector
-	void doubleMirror(vec3 m1, vec3 m2) {
-		this->position = mirror(this->position, m1);
-		this->position = mirror(this->position, m2);
-	}
-
 	void move(vec3 v) {
 		this->position = this->position + v;
 	}
@@ -268,12 +270,16 @@ public:
 	void drawNode() {
 		std::vector<vec2> vertices;
 
-		float sides = 20.0f;
+		int sides = 20.0f;
 		float radius = 0.05f;
 
 		for (int i = 0; i < sides; i++) {
 			float hyperX = (cosf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + NDCToHyperbolic(position).x;
 			float hyperY = (sinf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + NDCToHyperbolic(position).y;
+
+			vec3 posTmp = vec3(hyperX, hyperY, 1);
+			posTmp = NDCToHyperbolic(posTmp);
+			vec3 hyperPos = doubleMirror(posTmp, vec3(0, 0, 1), hyperbolicToNDC(position));
 
 			vertices.push_back(vec2(hyperX / NDCToHyperbolic(position).z, hyperY / NDCToHyperbolic(position).z));
 		}
@@ -553,7 +559,7 @@ public:
 		vec3 m2 = vec3(0, 0, 1); // TODO
 
 		for (int i = 0; i < nodes.size(); i++) {
-			nodes[i].doubleMirror(m1, m2);
+			nodes[i].setPosition(doubleMirror(nodes[i].getPosition(), m1, m2));
 		}
 	}
 
