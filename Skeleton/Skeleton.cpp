@@ -294,7 +294,6 @@ public:
 		location = glGetUniformLocation(gpuProgram.getId(), "MVP");
 		glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);
 
-		//glPointSize(pointSize);
 		glBindVertexArray(vao);
 		glDrawArrays(GL_TRIANGLE_FAN, 0, sides);
 	}
