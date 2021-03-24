@@ -62,17 +62,17 @@ const char* const fragmentSource = R"(
 GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
-float preferredDistance = 0.25f; // d*
+float preferredDistance = 0.55f; // d*
 
-float repulsiveForce = 20.0f;
-float forceLimitConnectedPositive = 20.0f;
-float forceLimitConnectedNegative = 10.0f;
-float connectedForceMultiplierTop = 400.0f;
-float connectedForceMultiplierBot = 50.0f;
+float repulsiveForce = 50.0f;
+float connectedAttractiveForceLimit = 20.0f;
+float connectedRepulsiveForceLimit = 10.0f;
+float connectedAttractiveForceMultiplier = 400.0f;
+float connectedRepulsiveForceMultiplier = 50.0f;
 
 float repulsiveForceDC = 10.0f;
-float forceLimitDisconnectedNegative = 50.0f;
-float disconnectedForceMultiplier = 3.0f;
+float disconnectedRepulsiveForceLimit = 50.0f;
+float disconnectedForceMultiplier = 5.0f;
 
 float friction = 0.1f;
 
@@ -92,12 +92,12 @@ void printVec3(std::string message, vec3 v) {
 
 // preferredDistance < distance || connected
 float magicFormula(float x) {
-	return connectedForceMultiplierTop * (((x - preferredDistance) * (x - preferredDistance)) / 2.6f) * cosf((x - preferredDistance) / 2.6f);
+	return connectedAttractiveForceMultiplier * (((x - preferredDistance) * (x - preferredDistance)) / 2.6f) * cosf((x - preferredDistance) / 2.6f);
 }
 
 // distance < preferredDistance || connected
 float magicFormula2(float x) {
-	float mf1 = connectedForceMultiplierBot * (((x - preferredDistance) * (x - preferredDistance)) / 2.6f) * cosf((x - preferredDistance) / 2.6f);
+	float mf1 = connectedRepulsiveForceMultiplier * (((x - preferredDistance) * (x - preferredDistance)) / 2.6f) * cosf((x - preferredDistance) / 2.6f);
 	return -mf1 * repulsiveForce * repulsiveForce;
 }
 
@@ -210,10 +210,8 @@ public:
 		//(without them the graph would be in the top-right corner)
 		float x = -1.0f;
 		float y = -1.0f;
-		while (x * x + y * y > 0.9f) {
-			x = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
-			y = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
-		}
+		x = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
+		y = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
 		float z = 1.0f;
 		this->position = vec3(x, y, z);
 	}
@@ -258,11 +256,11 @@ public:
 		float distance = getDistance(this->position, other);
 		if (distance > preferredDistance) {
 			float magnitude = magicFormula(distance);
-			return min(magnitude, forceLimitConnectedPositive);
+			return min(magnitude, connectedAttractiveForceLimit);
 		}
 		else {
 			float magnitude = magicFormula2(distance);
-			return min(magnitude, forceLimitConnectedNegative);
+			return min(magnitude, connectedRepulsiveForceLimit);
 		}
 	}
 
@@ -270,7 +268,7 @@ public:
 	float getForceMagnitudeDisconnected(vec3 other) {
 		float distance = getDistance(this->position, other);
 		float magnitude = magicFormula3(distance);
-		return min(magnitude, forceLimitDisconnectedNegative);
+		return min(magnitude, disconnectedRepulsiveForceLimit);
 	}
 
 	// draws a node on the screen
@@ -394,9 +392,9 @@ public:
 			if (randomIndex1 == randomIndex2)
 				visible = false;
 
-			if (res.size() > 1)
+			if (res.size() > 2)
 			{
-				for (int i = 0; i < res.size() - 1; i++)
+				for (int i = 0; i < res.size() - 1; i+=2)
 				{
 					if (res[i] == randomIndex1 && res[i + 1] == randomIndex2 || res[i] == randomIndex2 && res[i + 1] == randomIndex1)
 					{
