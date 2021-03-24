@@ -63,19 +63,24 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
 float preferredDistance = 0.25f; // d*
+
 float repulsiveForce = 20.0f;
-float repulsiveForceDC = 10.0f;
 float forceLimitConnectedPositive = 20.0f;
 float forceLimitConnectedNegative = 10.0f;
+float connectedForceMultiplierTop = 400.0f;
+float connectedForceMultiplierBot = 50.0f;
+
+float repulsiveForceDC = 10.0f;
 float forceLimitDisconnectedNegative = 50.0f;
-float disconnectedForceMultiplier = 10.0f;
-float connectedForceMultiplier = 2000.0f;
+float disconnectedForceMultiplier = 3.0f;
 float friction = 0.1f;
+
+float radialForceMultiplier = 1.0f;
 
 bool spaceKeyPressed = false;
 bool isHyperbolic = false;
 
-const int numberOfNodes = 30;
+const int numberOfNodes = 50;
 const int visibleEdgesInPercent = 5;
 long timeAtLastFrame = 0;
 
@@ -86,12 +91,13 @@ void printVec3(std::string message, vec3 v) {
 
 // preferredDistance < distance || connected
 float magicFormula(float x) {
-	return connectedForceMultiplier * (((x - preferredDistance) * (x - preferredDistance)) / 2.6f) * cosf((x - preferredDistance) / 2.6f);
+	return connectedForceMultiplierTop * (((x - preferredDistance) * (x - preferredDistance)) / 2.6f) * cosf((x - preferredDistance) / 2.6f);
 }
 
 // distance < preferredDistance || connected
 float magicFormula2(float x) {
-	return -magicFormula(x) * repulsiveForce * repulsiveForce;
+	float mf1 = connectedForceMultiplierBot * (((x - preferredDistance) * (x - preferredDistance)) / 2.6f) * cosf((x - preferredDistance) / 2.6f);
+	return -mf1 * repulsiveForce * repulsiveForce;
 }
 
 // not connected
@@ -188,7 +194,7 @@ public:
 		//(without them the graph would be in the top-right corner)
 		float x = -1.0f;
 		float y = -1.0f;
-		while (x * x + y * y >= 1.0f) {
+		while (x * x + y * y > 0.9f) {
 			x = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
 			y = (((float)rand() / RAND_MAX) * 2.0f) - 1.0f;
 		}
@@ -551,7 +557,7 @@ public:
 	}
 
 	// summarizes every force that influences the given node's position
-	vec3 summarizeForces(int nodeIndex) { //TODO
+	vec3 summarizeForces(int nodeIndex) {
 		vec3 sum = vec3(0, 0, 0);
 		for (int i = 0; i < nodes.size(); i++)
 		{
@@ -559,6 +565,10 @@ public:
 				continue;
 			sum = sum + calculateForceFrom(nodeIndex, i);
 		}
+		vec3 pos = nodes[nodeIndex].getPosition();
+		float len = length(pos);
+		//abs(tanf(len * (float)M_PI / 2)) *
+		sum = sum - radialForceMultiplier * pos;
 		return sum;
 	}
 
@@ -575,11 +585,9 @@ public:
 
 	// modifies the graph based on the passed time
 	void modifyGraph(float deltaTime) {
-		//convertToHyperbolic();
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			vec3 force = summarizeForces(i);
-			//printVec3("force: ", force);
 			nodes[i].applyForce(force, deltaTime);
 		}
 		/*for (int i = 0; i < nodes.size(); i++) {
@@ -590,8 +598,6 @@ public:
 			vec3 v = deltaTime * nodes[i].getSpeed();
 			nodes[i].move(v);
 		}
-
-		//convertToNDC();
 
 		moveTowardsCenter();
 		//keepItOnTheScreen();
