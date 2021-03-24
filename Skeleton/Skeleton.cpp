@@ -106,7 +106,7 @@ float magicFormula3(float x) {
 	return disconnectedForceMultiplier / (x * repulsiveForceDC) + 1 * preferredDistance / repulsiveForceDC;
 }
 
-// calculated the friction based on the elapsed time
+// calculates the friction based on the elapsed time
 float calculateFriction() {
 	long timeFromStart = glutGet(GLUT_ELAPSED_TIME);
 	float a = (float)timeFromStart * (float)timeFromStart / 100000000.0f;
