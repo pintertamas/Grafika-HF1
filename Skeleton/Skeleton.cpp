@@ -81,7 +81,7 @@ float radialForceMultiplier = 1.0f;
 bool spaceKeyPressed = false;
 bool isHyperbolic = false;
 
-const int numberOfNodes = 50;
+const int numberOfNodes = 20;
 const int visibleEdgesInPercent = 5;
 long timeAtLastFrame = 0;
 
@@ -151,6 +151,13 @@ vec3 hyperbolicToNDC(vec3 hyperbolic) {
 // (x,y,1) / sqrt(1-x^2-y^2)
 vec3 NDCToHyperbolic(vec3 NDC) {
 	return vec3(NDC.x, NDC.y, 1.0f) / sqrt(1.0f - (NDC.x) * (NDC.x) - (NDC.y) * (NDC.y));
+}
+
+// x^2 + y^2 - w^2 = -1
+// x^2 + y^2 + 1 = w^2
+// sqrt(x^2 + y^2 + 1) = w
+float calculateW(vec3 position) {
+	return sqrt(position.x * position.x + position.y * position.y + 1.0f);
 }
 
 // mirrors the node to the given point (source: hw video)
@@ -274,14 +281,14 @@ public:
 		float radius = 0.05f;
 
 		for (int i = 0; i < sides; i++) {
-			float hyperX = (cosf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + NDCToHyperbolic(position).x;
-			float hyperY = (sinf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + NDCToHyperbolic(position).y;
+			float hyperX = (cosf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + position.x;
+			float hyperY = (sinf(360.0f / sides * i * (float)M_PI / 180.0f) * radius) + position.y;
 
-			vec3 posTmp = vec3(hyperX, hyperY, 1);
-			posTmp = NDCToHyperbolic(posTmp);
-			vec3 hyperPos = doubleMirror(posTmp, vec3(0, 0, 1), hyperbolicToNDC(position));
+			float w = calculateW(position);
+			vec3 hyperbolicPos = hyperbolicToNDC(vec3(hyperX, hyperY, w));
+			vec2 screenPos = vec2(hyperbolicPos.x, hyperbolicPos.y);
 
-			vertices.push_back(vec2(hyperX / NDCToHyperbolic(position).z, hyperY / NDCToHyperbolic(position).z));
+			vertices.push_back(screenPos);
 		}
 
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
@@ -471,10 +478,26 @@ public:
 	void drawEdges() {
 		std::vector<vec2> vertices;
 
+		/*float w = calculateW(position);
+		vec3 hyperbolicPos = hyperbolicToNDC(vec3(hyperX, hyperY, w));
+		vec2 screenPos = vec2(hyperbolicPos.x, hyperbolicPos.y);*/
+
 		for (int i = 0; i < edges.size() - 1; i++)
 		{
-			vertices.push_back(vec2(nodes[edges[i]].getPosition().x, (nodes[edges[i]].getPosition().y)));
-			vertices.push_back(vec2(nodes[edges[i + 1]].getPosition().x, (nodes[edges[i + 1]].getPosition().y)));
+			float posX1 = nodes[edges[i]].getPosition().x;
+			float posY1 = nodes[edges[i]].getPosition().y;
+			float posW1 = calculateW(nodes[edges[i]].getPosition());
+			vec3 hyperbolicPos1 = hyperbolicToNDC(vec3(posX1, posY1, posW1));
+			vec2 screenPos1 = vec2(hyperbolicPos1.x, hyperbolicPos1.y);
+
+			float posX2 = nodes[edges[i + 1]].getPosition().x;
+			float posY2 = nodes[edges[i + 1]].getPosition().y;
+			float posW2 = calculateW(nodes[edges[i + 1]].getPosition());
+			vec3 hyperbolicPos2 = hyperbolicToNDC(vec3(posX2, posY2, posW2));
+			vec2 screenPos2 = vec2(hyperbolicPos2.x, hyperbolicPos2.y);
+
+			vertices.push_back(screenPos1);
+			vertices.push_back(screenPos2);
 		}
 
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vec2), vertices.data(), GL_STATIC_DRAW);
