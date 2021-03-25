@@ -110,7 +110,7 @@ float magicFormula3(float x) {
 float calculateFriction() {
 	long timeFromStart = glutGet(GLUT_ELAPSED_TIME);
 	float a = (float)timeFromStart * (float)timeFromStart / 100000000.0f;
-	float friction = min(a, 1.0f);
+	float friction = a < 1.0f ? 0 : 1.0f;
 	return (float)friction;
 }
 
@@ -256,11 +256,11 @@ public:
 		float distance = getDistance(this->position, other);
 		if (distance > preferredDistance) {
 			float magnitude = magicFormula(distance);
-			return min(magnitude, connectedAttractiveForceLimit);
+			return magnitude < connectedAttractiveForceLimit ? magnitude : connectedAttractiveForceLimit;
 		}
 		else {
 			float magnitude = magicFormula2(distance);
-			return min(magnitude, connectedRepulsiveForceLimit);
+			return magnitude < connectedRepulsiveForceLimit ? magnitude : connectedRepulsiveForceLimit;
 		}
 	}
 
@@ -268,7 +268,7 @@ public:
 	float getForceMagnitudeDisconnected(vec3 other) {
 		float distance = getDistance(this->position, other);
 		float magnitude = magicFormula3(distance);
-		return min(magnitude, disconnectedRepulsiveForceLimit);
+		return magnitude < disconnectedRepulsiveForceLimit ? magnitude : disconnectedRepulsiveForceLimit;
 	}
 
 	// draws a node on the screen
@@ -359,8 +359,8 @@ public:
 	// calculates the hub of all nodes
 	vec3 calculateHub() {
 		vec3 hub = vec3(0, 0, 0);
-		for each (Node node in nodes) {
-			hub = hub + node.getPosition();
+		for (int i = 0; i < nodes.size(); i++) {
+			hub = hub + nodes[i].getPosition();
 		}
 		return hub / nodes.size();
 	}
@@ -385,7 +385,7 @@ public:
 		int visibleEdgesCount = 0;
 		std::vector<int> res;
 		while (visibleEdgesCount < requiredNumberOfVisibleEdges) {
-			boolean visible = true;
+			bool visible = true;
 			int randomIndex1 = rand() % nodes.size();
 			int randomIndex2 = rand() % nodes.size();
 
@@ -527,7 +527,7 @@ public:
 	}
 
 	// returns whether two nodes are connected or not
-	boolean isConnected(int n1, int n2) {
+	bool isConnected(int n1, int n2) {
 		for (int i = 0; i < edges.size() - 1; i++) {
 			if (edges[i] == n1 && edges[i + 1] == n2)
 				return true;
@@ -682,7 +682,7 @@ void onIdle() {
 
 	if (spaceKeyPressed) {
 		float deltaTime = (float)(time - timeAtLastFrame) / 1000;
-		graph.modifyGraph(min(deltaTime, 0.3));
+		graph.modifyGraph(deltaTime);
 	}
 
 	timeAtLastFrame = glutGet(GLUT_ELAPSED_TIME);
